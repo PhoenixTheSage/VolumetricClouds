@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<PluginData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="GitHubPlugin">
+
+    <Id>91FF11A5-F230-4326-902D-9FA1CCE35D54</Id>
+    <RepoId>PhoenixTheSage/VolumetricClouds</RepoId>
+    <FriendlyName>Volumetric Clouds</FriendlyName>
+    <Author>PhoenixTheSage</Author>
+    <Tooltip>Replaces planet CloudSphere layers with raymarched volumetric clouds (requires Anomaly).</Tooltip>
+    <Description>Replaces Keen's textured planet cloud layers with spherical raymarched volumetric clouds.
+
+Requires the Anomaly Shader Framework. Configure under Anomaly Shaders → Volumetric Clouds → Settings (Rich HUD Master) or the Pulsar plugin dialog.
+
+For support please join the Pulsar Discord: https://discord.gg/z8ZczP2YZY
+    </Description>
+
+    <DependencyIds>
+        <Id>A9C29274-E447-49EE-881B-C980E6D190FD</Id>
+    </DependencyIds>
+
+    <SourceDirectories>
+        <Directory>ClientPlugin</Directory>
+    </SourceDirectories>
+
+    <Asset Name="AnomalyPack" Path="Pack" />
+
+    <Commit>TODO Git commit hash</Commit>
+
+</PluginData>

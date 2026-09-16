@@ -1,0 +1,19 @@
+{
+  "id": "volumetric.clouds",
+  "name": "Volumetric Clouds",
+  "passes": [
+    {
+      "id": "volumetric.clouds.volume",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/VolumetricClouds.hlsl",
+      "compose": "IsolatedMix",
+      "scale": 0.5,
+      "temporal": ["InColor"],
+      "binds": [
+        { "catalog": "clouds.shape", "slot": 7 },
+        { "catalog": "clouds.detail", "slot": 8 },
+        { "catalog": "clouds.weather", "slot": 9 }
+      ]
+    }
+  ]
+}

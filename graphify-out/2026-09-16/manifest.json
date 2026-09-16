@@ -1,0 +1,284 @@
+{
+  "ClientPlugin/Anomaly/AnomalyBridge.cs": {
+    "mtime": 1789050939.935549,
+    "seen": 1789549101.683829,
+    "ast_hash": "380ff47f2c6a705bd7960492980da870",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Anomaly/RenderTraceBind.cs": {
+    "mtime": 1789050499.7621603,
+    "seen": 1789549101.683829,
+    "ast_hash": "2e27e74ec6e804a1bc2b558318c14319",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/ClientPlugin.csproj": {
+    "mtime": 1789051015.5971024,
+    "seen": 1789549101.683829,
+    "ast_hash": "86f1b377877dececb8be2b64c93b438d",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Clouds/CloudRenderer.cs": {
+    "mtime": 1789545957.3295057,
+    "seen": 1789549101.683829,
+    "ast_hash": "5b3c88f946ac0e7b27f1c73715e3163d",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Clouds/CloudSampler.cs": {
+    "mtime": 1789549067.6628246,
+    "seen": 1789549101.683829,
+    "ast_hash": "0bcccd48b485e11fabf0b3a2fd82cd06",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Clouds/CloudSnapshot.cs": {
+    "mtime": 1789545938.9148142,
+    "seen": 1789549101.683829,
+    "ast_hash": "4769925d9ebdbed77286c55951d3e2df",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Clouds/CloudTextures.cs": {
+    "mtime": 1789550754.4466436,
+    "seen": 1789550784.7446449,
+    "ast_hash": "ae37ac82d7f067fec83850110249d464",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Config.cs": {
+    "mtime": 1789542303.3399286,
+    "seen": 1789549101.683829,
+    "ast_hash": "76cdfb1a75f817ea78339df1592d1ad6",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Patches/CloudRendererSkipPatch.cs": {
+    "mtime": 1789111889.7055676,
+    "seen": 1789549101.683829,
+    "ast_hash": "6296af4186900466c298f0d58d1208bd",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Plugin.cs": {
+    "mtime": 1789051071.5055175,
+    "seen": 1789549101.683829,
+    "ast_hash": "93fb236b46caca333234572774e2e8a3",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/RichHud/AnomalyTerminalHook.cs": {
+    "mtime": 1789542324.457194,
+    "seen": 1789549101.683829,
+    "ast_hash": "3007e13aff35c4178457f7f6bafc86b6",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/ConfigStorage.cs": {
+    "mtime": 1789050471.1926613,
+    "seen": 1789549101.683829,
+    "ast_hash": "66f388e018f2265797b437afd085230a",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Button.cs": {
+    "mtime": 1788765419.8908184,
+    "seen": 1789549101.683829,
+    "ast_hash": "48eff16fd338350012310aa3d1a2e3ff",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Checkbox.cs": {
+    "mtime": 1788765419.8918593,
+    "seen": 1789549101.683829,
+    "ast_hash": "5483551ba5edbd3a75696595f0a75d13",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Color.cs": {
+    "mtime": 1788765419.8918593,
+    "seen": 1789549101.683829,
+    "ast_hash": "f468edad1f3f4989c77567cb34554712",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Control.cs": {
+    "mtime": 1788765419.8918593,
+    "seen": 1789549101.683829,
+    "ast_hash": "b73fe59acf59f635346fc96518521cf7",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Dropdown.cs": {
+    "mtime": 1788765419.8918593,
+    "seen": 1789549101.683829,
+    "ast_hash": "c52b5ab68db0f04c5dd28fc5c7523d64",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Element.cs": {
+    "mtime": 1788765419.8928611,
+    "seen": 1789549101.683829,
+    "ast_hash": "be0198761c36f542d2ace282124a3711",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Keybind.cs": {
+    "mtime": 1788765419.8928611,
+    "seen": 1789549101.683829,
+    "ast_hash": "e926046bd16d8d929243513e6d51a451",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Separator.cs": {
+    "mtime": 1788765419.8928611,
+    "seen": 1789549101.683829,
+    "ast_hash": "7019c1595ba26a82e8858856145a19a0",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Slider.cs": {
+    "mtime": 1788765419.8928611,
+    "seen": 1789549101.683829,
+    "ast_hash": "b63cd6a6d83572164fdfb9c04607cebe",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Elements/Textbox.cs": {
+    "mtime": 1788765419.8941116,
+    "seen": 1789549101.683829,
+    "ast_hash": "9ad25765486129c886f27ebc158f8d19",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Layouts/Layout.cs": {
+    "mtime": 1788765419.8941116,
+    "seen": 1789549101.683829,
+    "ast_hash": "b19723c1a846defb1f22d63f36812a12",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Layouts/None.cs": {
+    "mtime": 1788765419.8941116,
+    "seen": 1789549101.683829,
+    "ast_hash": "f6da0c41949f9039737fa068d4aecc90",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Layouts/Simple.cs": {
+    "mtime": 1788765419.8951466,
+    "seen": 1789549101.683829,
+    "ast_hash": "f585d3c4f145604b67b99e0499d8c203",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/SettingsGenerator.cs": {
+    "mtime": 1788765419.8951466,
+    "seen": 1789549101.683829,
+    "ast_hash": "799ec6e5d046201545a50463f7a90d16",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/SettingsScreen.cs": {
+    "mtime": 1789050471.2194576,
+    "seen": 1789549101.683829,
+    "ast_hash": "2c2ac15e7b052be03a61d457bc209db8",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Tools/Binding.cs": {
+    "mtime": 1788765419.8961518,
+    "seen": 1789549101.683829,
+    "ast_hash": "b23f85e8447381a47cbbdd6b5f4e091e",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Settings/Tools/Tools.cs": {
+    "mtime": 1788765419.8961518,
+    "seen": 1789549101.683829,
+    "ast_hash": "683b5850c035d98b0e5aa5a30d5a9156",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Tools/GameAssembliesToPublicize.cs": {
+    "mtime": 1789050895.0259268,
+    "seen": 1789549101.683829,
+    "ast_hash": "7211b9521287874fc352bf6fc432f8e0",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Tools/Hashing.cs": {
+    "mtime": 1788765419.8972125,
+    "seen": 1789549101.683829,
+    "ast_hash": "d6cfe93094b3d17fe8db3ee324708edb",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Tools/IgnoresAccessChecksToAttribute.cs": {
+    "mtime": 1789050903.5774944,
+    "seen": 1789549101.683829,
+    "ast_hash": "df827beaa775c8b63772b15e91673447",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Tools/PreloaderHelpers.cs": {
+    "mtime": 1788765419.8972125,
+    "seen": 1789549101.683829,
+    "ast_hash": "01c63d962e8f5c0d2fcdefb32ee1d3c9",
+    "semantic_hash": ""
+  },
+  "ClientPlugin/Tools/TranspilerHelpers.cs": {
+    "mtime": 1788765419.8982592,
+    "seen": 1789549101.683829,
+    "ast_hash": "19f55ae1478c612d989ae885b96f1dd4",
+    "semantic_hash": ""
+  },
+  "Clouds.sln": {
+    "mtime": 1789030047.804834,
+    "seen": 1789549101.683829,
+    "ast_hash": "0b182eb0b61005ea30f7e9d8f2256999",
+    "semantic_hash": ""
+  },
+  "Pack/anomaly.json": {
+    "mtime": 1789539806.4885006,
+    "seen": 1789549101.683829,
+    "ast_hash": "f6b2bea9f49db42cf5907820d1c1b3ef",
+    "semantic_hash": ""
+  },
+  "clean.sh": {
+    "mtime": 1788765419.9003208,
+    "seen": 1789549101.683829,
+    "ast_hash": "282695b101fffaf7c82e6346f0b85b97",
+    "semantic_hash": ""
+  },
+  "setup.py": {
+    "mtime": 1788847017.392884,
+    "seen": 1789549101.683829,
+    "ast_hash": "26227ec13b6c3e37e069b4945072c62c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/a5c-ai-babysitter-hlsl/README.md": {
+    "mtime": 1788516266.152685,
+    "seen": 1789549101.683829,
+    "ast_hash": "62ae4bf9273b701007be246a7a3eb922",
+    "semantic_hash": ""
+  },
+  ".agents/skills/a5c-ai-babysitter-hlsl/SKILL.md": {
+    "mtime": 1788829828.4222832,
+    "seen": 1789549101.683829,
+    "ast_hash": "5fd078b07385e0a22c53960efce5ae6a",
+    "semantic_hash": ""
+  },
+  ".cursor/skills/a5c-ai-babysitter-hlsl/README.md": {
+    "mtime": 1788516266.152685,
+    "seen": 1789549101.683829,
+    "ast_hash": "62ae4bf9273b701007be246a7a3eb922",
+    "semantic_hash": ""
+  },
+  ".cursor/skills/a5c-ai-babysitter-hlsl/SKILL.md": {
+    "mtime": 1788516266.149358,
+    "seen": 1789549101.683829,
+    "ast_hash": "5fd078b07385e0a22c53960efce5ae6a",
+    "semantic_hash": ""
+  },
+  ".github/copilot-instructions.md": {
+    "mtime": 1788765419.8858612,
+    "seen": 1789549101.6843688,
+    "ast_hash": "9d52d613dd3bae00479e061e46df9693",
+    "semantic_hash": ""
+  },
+  ".vscode/AGENTS.md": {
+    "mtime": 1788765419.8868735,
+    "seen": 1789549101.6843688,
+    "ast_hash": "cb13a5315249192638070c6303b1c628",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1789540200.1439013,
+    "seen": 1789549101.6843688,
+    "ast_hash": "b5464eeecbeaa711de13685ca9132f6b",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1789542324.457194,
+    "seen": 1789549101.6843688,
+    "ast_hash": "7c934a78313a76bb4b41314182465cba",
+    "semantic_hash": ""
+  },
+  "Docs/ConfigDialogExample.png": {
+    "mtime": 1788765419.8993237,
+    "seen": 1789549101.6843688,
+    "ast_hash": "5298688f8d5cc8b4f4a03d18a449b596",
+    "semantic_hash": ""
+  }
+}

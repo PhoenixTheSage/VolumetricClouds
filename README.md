@@ -1,154 +1,60 @@
-# Space Engineers Client Plugin Template
+# Volumetric Clouds for Space Engineers
 
-[Server/Client version of the template](https://github.com/viktor-ferenczi/se-server-plugin-template)
+Replaces Keen’s textured planet CloudSphere layers with spherical, raymarched volumetric clouds.
+
+This is an [Anomaly](https://github.com/PhoenixTheSage/Anomaly) shader pack. Enabling it auto-enables Anomaly.
+
+For support please join the Pulsar Discord: https://discord.gg/z8ZczP2YZY
 
 ## Prerequisites
 
 - [Space Engineers](https://store.steampowered.com/app/244850/Space_Engineers/)
-- [Python 3.12](https://python.org) (requires 3.12 or newer)
 - [Pulsar](https://github.com/SpaceGT/Pulsar)
-- [.NET Framework 4.8.1 Developer Pack](https://dotnet.microsoft.com/en-us/download/dotnet-framework/net481) and
-  [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
+- [Anomaly Shader Framework](https://github.com/PhoenixTheSage/Anomaly) (pulled in as a dependency)
 
-## Create your plugin project
+## How to use
 
-1. Click on **Use this template** (top right corner on GitHub) and follow the wizard to create your repository
-2. Clone your repository to have a local working copy
-3. Run `setup.py`, enter the name of your plugin project in `CapitalizedWords` format
-4. Let `setup.py` auto-detect your install location or fill it in manually
-5. Open the solution in Visual Studio or Rider
-6. Make a test build, the plugin's DLL should be deployed (see the build log for the path)
-7. Test that the empty plugin can be enabled in Pulsar
-8. Replace the contents of this file with the description of your plugin
-9. Follow the TODO comments in the source code and implement your plugin
+Enable **Volumetric Clouds** in Pulsar's Plugins dialog. Anomaly is enabled automatically.
 
-In case of questions please feel free to ask the SE plugin developer community on the
-[Pulsar](https://discord.gg/z8ZczP2YZY) Discord server in their relevant text channels. 
-They also have dedicated channels for plugin ideas, should you look for a new one.
+Configure the pack under **Anomaly Shaders → Volumetric Clouds → Settings** when
+[Rich HUD Master](https://steamcommunity.com/sharedfiles/filedetails/?id=1965654081)
+is in the world. The Pulsar plugin Settings dialog still works without Master.
 
-_Good luck!_
+Settings write `{UserDataPath}/Storage/Clouds.cfg` after the sliders are quiet (~400 ms). They do not write on every mouse move.
 
-## Remarks
+## Functionality
 
-### Plugin version
+- AfterAtmosphere IsolatedMix program (`volumetric.clouds`). Clouds occlude sky and sun.
+- Nearest planet that has `CloudLayers` supplies shell altitude, tint, wind, and the weather map.
+- Harmony skip of Keen `MyCloudRenderer.Render` while the pack is registered, enabled, and **Replace vanilla layers** is on. Turn that off (or disable the pack) to bring Keen spheres back.
+- Quality presets: Low 16 / Medium 24 / High 32 / Ultra 48 view steps (light march 2 / 3 / 4 / 4). Camera motion drops steps via Anomaly `SafetyScale`.
+- Optional HDR lift when an HdrRender-class Display tenant is live.
+- With SE-DLSS, some sky-through-cloud ghosting is expected in v1 (color in, no cloud motion vectors).
 
-The plugin version lives in `Version.Build.props`, which **is** committed and imported by
-`Directory.Build.props`. Keeping the version separate from the local path overrides means it
-is shared by all contributors and stays under version control. Bump the version there.
+Anomaly Show Status should list `Fullscreen: AfterAtmosphere/IsolatedMix:volumetric.clouds`.
 
-### Folder path overrides
+## Settings
 
-`Directory.Build.props` **is** committed and declares the overridable folder paths with empty
-defaults:
+| Control | Default | Notes |
+|---------|---------|--------|
+| Enabled | on | Master switch |
+| Replace vanilla layers | on | Hide Keen CloudSphere draws |
+| Quality | High | Raymarch / light-step budget |
+| Coverage / Density | 1.0 / 0.35 | Weather scale and optical density |
+| Thickness | 0.04 | Shell thickness as a fraction of planet radius |
+| Wind speed | 1 | Weather-map drift (full wrap ~15 min at 1) plus planet layer spin |
+| Cirrus | 0.55 | High-altitude ice veil in the upper shell |
+| Albedo tint | white | Multiplies the planet layer color |
+| HDR lift | 4 | Only with a Display tenant; 1 = SDR |
+| Fade start / end | 8 / 14 | Distance fade in atmosphere radii |
 
-- `Bin64` — the folder containing `SpaceEngineers.exe`
-- `Pulsar` — the Pulsar folder the plugin is deployed into after each build
+## Building
 
-It optionally imports `Directory.Build.props.user` from the repository root, which is **not
-committed** (matched by `*.user` in `.gitignore`), so each contributor keeps their own local
-paths there.
+The plugin version lives in `Version.Build.props`. Folder overrides (`Bin64`, `Pulsar`) go in `Directory.Build.props.user` (run `setup.py` once).
 
-To override a path manually, copy the first `PropertyGroup` of `Directory.Build.props` into
-`Directory.Build.props.user`, wrapped into a top-level `<Project>` element, and fill in your
-paths. `setup.py` writes that file for you with the auto-detected install location, creating
-it if needed and keeping any other overrides already in it.
-
-Leaving a path empty (or having no `Directory.Build.props.user` at all) falls back to the
-auto-detection in `Directory.Build.props`, which reads the Steam registry keys on Windows and
-the usual Steam locations on Linux, then resolves the game through Steam's `libraryfolders.vdf`,
-so installs on a secondary Steam library are found as well. Pulsar defaults to `%AppData%\Pulsar`
-on Windows and `$XDG_CONFIG_HOME/Pulsar` (or `~/.config/Pulsar`) on Linux.
-
-The build fails with a clear message if `Bin64` cannot be resolved, and warns instead of failing
-if the Pulsar folder is missing.
-
-### Deployment
-
-Each successful build copies itself into Pulsar's `Local` plugin folder, so there is nothing to
-run by hand:
+Each successful build copies `plugin.dll`, `plugin.xml`, and the `Pack/` asset folder into Pulsar's `Local` plugin folder:
 
 | Build     | Deployed to                                    |
 |-----------|------------------------------------------------|
-| `net48`   | `<Pulsar>/Legacy/Local/<PluginName>/`          |
-| `net10.0` | `<Pulsar>/Interim/Local/<PluginName>/`         |
-
-The DLL is copied as `plugin.dll`, its symbols as `plugin.pdb` and the PluginHub registration
-XML from the repository root as `plugin.xml`, so Pulsar shows the plugin under its friendly name
-and honours the runtime and platform restrictions declared there.
-
-`Interim` is the Pulsar executable running Space Engineers 1 on .NET 10. It falls back to the
-`Legacy` data folder when `<Pulsar>/Interim` does not exist, and so does the deployment.
-(`<Pulsar>/Modern` belongs to Space Engineers 2 and is never a deployment target here.)
-
-### Plugin configuration
-
-You can have a nice configuration dialog with little effort in the game client.
-Customize the `Config` class in the `ClientPlugin` project, just follow the examples.
-It supports many different data types, including key binding. Once you have more
-options than can fit on the screen the dialog will have a vertical scrollbar.
-
-![Example config dialog](Docs/ConfigDialogExample.png "Example config dialog")
-
-### Debugging
-
-- Always use a debug build if you want to set breakpoints and see variable values.
-- A debug build defines `DEBUG`, so you can add conditional code in `#if DEBUG` blocks.
-- While debugging a specific target unload the other two. It prevents the IDE to be confused.
-- If breakpoints do not "stick" or do not work, then make sure that:
-  - Other projects are unloaded, only the debugged one and Shared are loaded.
-  - Debugger is attached to the running process.
-  - You are debugging the code which is running (no code changes made since the build).
-
-### Building and debugging on .NET 10
-
-- Start the game with the `Interim.exe` Pulsar executable with the `-sources` command line option.
-- Click on the Sources button in Pulsar's dialog, then set up a development folder for your plugin.
-- Make sure to fill in the PluginHub registration XML (`YourPluginName.xml` in this repo) and load that as well.
-- Select `Debug` mode and run `Interim.exe`, then attach the debugger. That should allow debugging your plugin.
-- Select `Release` mode to test exactly how Pulsar will build and run your plugin on the player's machine.
-- The registered development folder shows up as a plugin you can select in the plugin list and save into a profile.
-
-#### Separate .NET 10 DLL build and deployment
-
-- Build your plugin for both `net10.0` and `net48`, which happens by default on Windows.
-- Make a copy of the `Legacy` folder as `Interim`, it will have a separate set of everything
-  (profiles, `Local` dir). The build then deploys the two target frameworks side by side.
-- Now you can start `Interim.exe` with debugging and debug the binary build of your plugin as usual.
-
-### Accessing internal, protected and private members in game code
-
-Enable the Krafs publicizer to significantly reduce the amount of reflections you need to write.
-
-This can be done by systematically uncommenting the code sections marked with "Uncomment to enable publicizer support".
-Make sure not to miss any of those. List the game assemblies you need to publicize in `GameAssembliesToPublicize.cs`.
-In case of problems read about the [Krafs Publicizer](https://github.com/krafs/Publicizer) or reach out on the [Pulsar](https://discord.gg/z8ZczP2YZY) Discord server.
-
-### AI assisted plugin development
-
-Please consider using [se-dev-skills](https://github.com/viktor-ferenczi/se-dev-skills/) for better outcomes.
-
-### Troubleshooting
-
-- If the IDE looks confused, then restarting it and the debugged game usually works.
-- If the restart did not work, then try to delete caches used by your IDE and restart.
-- If your build cannot deploy (just runs in a loop), then something locks the DLL file.
-- Look for running game processes (maybe stuck running in the background) and kill them.
-
-### Release
-
-- Always make your final release from a RELEASE build. (More optimized, removes debug code.)
-- Always test your RELEASE build before publishing. Sometimes it behaves differently.
-- In case of client plugins the Pulsar compiles your code, watch out for differences.
-
-### Communication
-
-- In your documentation always include how players or server admins should report bugs.
-- Try to be reachable and respond on a timely manner over your communication channels.
-- Be open for constructive critics.
-
-### Abandoning your project
-
-- Always consider finding a new maintainer, ask around at least once.
-- If you ever abandon the project, then make it clear on its GitHub page.
-- Abandoned projects should be made hidden on PluginHub and Torch's plugin list.
-- Keep the code available on GitHub, so it can be forked and continued by others.
+| `net48`   | `<Pulsar>/Legacy/Local/Clouds/`                |
+| `net10.0` | `<Pulsar>/Interim/Local/Clouds/`               |

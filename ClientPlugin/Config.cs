@@ -1,119 +1,169 @@
-using ClientPlugin.Settings;
-using ClientPlugin.Settings.Elements;
-using Sandbox.Graphics.GUI;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Text;
-using ClientPlugin.Settings.Tools;
-using VRage.Input;
+using ClientPlugin.Settings;
+using ClientPlugin.Settings.Elements;
 using VRageMath;
-
 
 namespace ClientPlugin;
 
-public enum ExampleEnum
+public enum CloudQuality
 {
-    FirstAlpha,
-    SecondBeta,
-    ThirdGamma,
-    AndTheDelta,
-    Epsilon
+    Low,
+    Medium,
+    High,
+    Ultra
 }
 
 public class Config : INotifyPropertyChanged
 {
     #region Options
 
-    // TODO: Define your configuration options and their default values
-    private bool toggle = true;
-    private int integer = 2;
-    private float number = 0.1f;
-    private string text = "Default Text";
-    private ExampleEnum dropdown = ExampleEnum.FirstAlpha;
-    private Color color = Color.Cyan;
-    private Color colorWithAlpha = new Color(0.8f, 0.6f, 0.2f, 0.5f);
-    private Binding keybind = new Binding(MyKeys.None);
+    private bool enabled = true;
+    private bool replaceVanilla = true;
+    private CloudQuality quality = CloudQuality.High;
+    private float coverage = 1.15f;
+    private float density = 0.55f;
+    private float thickness = 0.055f;
+    private float windSpeed = 1.0f;
+    private float cirrusStrength = 0.55f;
+    private Color albedoTint = Color.White;
+    private float hdrLift = 4f;
+    private float fadeStartFactor = 8f;
+    private float fadeEndFactor = 14f;
 
     #endregion
 
     #region User interface
 
-    // TODO: Settings dialog title
-    public readonly string Title = "Config Demo";
+    public readonly string Title = "Volumetric Clouds";
 
-    [Separator("Some settings")]
-        
-    // TODO: Settings dialog controls, one property for each configuration option
+    [Separator("Volumetric Clouds")]
 
-    [Checkbox(description: "Checkbox Tooltip")]
-    public bool Toggle
+    [Checkbox(description: "Master switch for raymarched clouds")]
+    public bool Enabled
     {
-        get => toggle;
-        set => SetField(ref toggle, value);
+        get => enabled;
+        set => SetField(ref enabled, value);
     }
 
-    [Slider(-1f, 10f, 1f, SliderAttribute.SliderType.Integer, description: "Integer Slider Tooltip")]
-    public int Integer
+    [Checkbox(label: "Replace vanilla layers", description: "Hide Keen CloudSphere layers while this pack is drawing")]
+    public bool ReplaceVanilla
     {
-        get => integer;
-        set => SetField(ref integer, value);
+        get => replaceVanilla;
+        set => SetField(ref replaceVanilla, value);
     }
 
-    [Slider(-5f, 4.5f, 0.5f, SliderAttribute.SliderType.Float, description: "Float Slider Tooltip")]
-    public float Number
+    [Dropdown(description: "Raymarching quality (samples per pixel)")]
+    public CloudQuality Quality
     {
-        get => number;
-        set => SetField(ref number, value);
+        get => quality;
+        set => SetField(ref quality, value);
     }
 
-    [Textbox(description: "Textbox Tooltip")]
-    public string Text
+    [Slider(0.05f, 2f, 0.01f, SliderAttribute.SliderType.Float, description: "Weather-map coverage scale")]
+    public float Coverage
     {
-        get => text;
-        set => SetField(ref text, value);
+        get => coverage;
+        set => SetField(ref coverage, value);
     }
 
-    [Dropdown(description: "Dropdown Tooltip")]
-    public ExampleEnum Dropdown
+    [Slider(0.05f, 1.2f, 0.01f, SliderAttribute.SliderType.Float, description: "Cloud optical density")]
+    public float Density
     {
-        get => dropdown;
-        set => SetField(ref dropdown, value);
+        get => density;
+        set => SetField(ref density, value);
     }
 
-    [Separator("More settings")]
-        
-    [Color(description: "RGB color")]
-    public Color Color
+    [Slider(0.01f, 0.12f, 0.005f, SliderAttribute.SliderType.Float, description: "Shell thickness as a fraction of planet radius")]
+    public float Thickness
     {
-        get => color;
-        set => SetField(ref color, value);
+        get => thickness;
+        set => SetField(ref thickness, value);
     }
 
-    [Color(hasAlpha: true, description: "RGBA color")]
-    public Color ColorWithAlpha
+    [Slider(0f, 8f, 0.05f, SliderAttribute.SliderType.Float, label: "Wind speed", description: "Cloud drift. 1 wraps the weather map in about 15 minutes")]
+    public float WindSpeed
     {
-        get => colorWithAlpha;
-        set => SetField(ref colorWithAlpha, value);
+        get => windSpeed;
+        set => SetField(ref windSpeed, value);
     }
 
-    [Keybind(description: "Keybind Tooltip - Unbind by right clicking the button")]
-    public Binding Keybind
+    [Slider(0f, 1.5f, 0.01f, SliderAttribute.SliderType.Float, label: "Cirrus", description: "High-altitude ice veil in the upper shell")]
+    public float CirrusStrength
     {
-        get => keybind;
-        set => SetField(ref keybind, value);
+        get => cirrusStrength;
+        set => SetField(ref cirrusStrength, value);
     }
 
-    [Button(description: "Button Tooltip")]
-    public void Button()
+    [Color(description: "Multiplies the planet CloudLayer albedo")]
+    public Color AlbedoTint
     {
-        MyGuiSandbox.AddScreen(MyGuiSandbox.CreateMessageBox(
-            MyMessageBoxStyleEnum.Info,
-            buttonType: MyMessageBoxButtonsType.OK,
-            messageText: new StringBuilder("You clicked me!"),
-            messageCaption: new StringBuilder("Custom Button Function"),
-            size: new Vector2(0.6f, 0.5f)
-        ));
+        get => albedoTint;
+        set => SetField(ref albedoTint, value);
+    }
+
+    [Slider(1f, 16f, 0.5f, SliderAttribute.SliderType.Float, label: "HDR lift", description: "Extra brightness when an HDR Display pack is live. 1 = same as SDR.")]
+    public float HdrLift
+    {
+        get => hdrLift;
+        set => SetField(ref hdrLift, value);
+    }
+
+    [Separator("Distance fade")]
+
+    [Slider(1f, 40f, 0.1f, SliderAttribute.SliderType.Float, label: "Fade start", description: "Distance where clouds start fading (atmosphere radii)")]
+    public float FadeStartFactor
+    {
+        get => fadeStartFactor;
+        set => SetField(ref fadeStartFactor, value);
+    }
+
+    [Slider(1f, 40f, 0.1f, SliderAttribute.SliderType.Float, label: "Fade end", description: "Distance where clouds vanish (atmosphere radii)")]
+    public float FadeEndFactor
+    {
+        get => fadeEndFactor;
+        set => SetField(ref fadeEndFactor, value);
+    }
+
+    #endregion
+
+    #region Derived values
+
+    public const int MaxRaymarchSteps = 28;
+
+    public int StepCount
+    {
+        get
+        {
+            switch (quality)
+            {
+                case CloudQuality.Low:
+                    return 12;
+                case CloudQuality.Medium:
+                    return 16;
+                case CloudQuality.Ultra:
+                    return MaxRaymarchSteps;
+                default:
+                    return 20;
+            }
+        }
+    }
+
+    public int LightStepCount
+    {
+        get
+        {
+            switch (quality)
+            {
+                case CloudQuality.Low:
+                    return 2;
+                case CloudQuality.Medium:
+                    return 3;
+                default:
+                    return 4;
+            }
+        }
     }
 
     #endregion
@@ -135,6 +185,8 @@ public class Config : INotifyPropertyChanged
         if (EqualityComparer<T>.Default.Equals(field, value)) return false;
         field = value;
         OnPropertyChanged(propertyName);
+        if (ReferenceEquals(this, Current))
+            ConfigStorage.Save(this);
         return true;
     }
 
