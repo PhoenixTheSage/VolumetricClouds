@@ -1,5 +1,6 @@
 using System;
 using ClientPlugin.Anomaly;
+using VRage.Utils;
 using VRageMath;
 using VRageRender;
 
@@ -92,7 +93,7 @@ public static class CloudRenderer
         float volumeSize = MathHelper.Clamp(Math.Max(snap.InnerRadius * 0.018f, 560f), 560f, 880f);
         float camToShell = CameraToShell(snap, centerRel);
 
-        return new[]
+        var values = new[]
         {
             centerRel.X, centerRel.Y, centerRel.Z, snap.InnerRadius,
             sunToward.X, sunToward.Y, sunToward.Z, snap.OuterRadius,
@@ -102,9 +103,9 @@ public static class CloudRenderer
             MathHelper.Clamp(config.CirrusStrength, 0f, 1.5f), config.LightStepCount,
             volumeSize, hdrLift, snap.MaxHillRadius, snap.AtmosphereRadius,
             snap.PlanetUp.X, snap.PlanetUp.Y, snap.PlanetUp.Z, camToShell,
-            0f, 0f, 0f, 0f,
-            0.25f, 0.25f, 0.30f, 1.0f,
-            0f, 0f, 0f, 0f,
+            snap.LayerPeaks.X, snap.LayerPeaks.Y, snap.LayerPeaks.Z, snap.LayerPeaks.W,
+            snap.LayerWidths.X, snap.LayerWidths.Y, snap.LayerWidths.Z, snap.LayerWidths.W,
+            snap.TerrainHug, 0f, 0f, 0f,
             0f, 0f, 0f, 0f,
             0f, 0f, 0f, 0f,
             0f, 0f, 0f, 0f,
@@ -112,5 +113,8 @@ public static class CloudRenderer
             0f, 0f, 0f, 0f,
             0f, 0f, 0f, 0f,
         };
+        if (values.Length != 64)
+            MyLog.Default.Error($"{Plugin.Name}: PackConstants {values.Length} floats (need 64)");
+        return values;
     }
 }

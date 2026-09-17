@@ -1,4 +1,4 @@
-// helpers: CloudDensity.hlsli v11 — wrapping 3D weather (no 2D cube/lat seams)
+// helpers: CloudDensity.hlsli v15 — wrapping 3D weather; layer bands; terrain hug; band floor
 #ifndef CLOUD_DENSITY_HLSLI
 #define CLOUD_DENSITY_HLSLI
 
@@ -54,9 +54,33 @@ float4 CloudSampleWeather(Texture3D weatherTex, float3 worldPos, float3 center, 
     return lerp(w0, w1, 0.42);
 }
 
+float CloudLayerBand(float h, float center, float width)
+{
+    if (width < 1e-4)
+        return 0.0;
+    float lo = center - width;
+    float hi = center + width;
+    return smoothstep(lo, center - width * 0.35, h)
+        * (1.0 - smoothstep(center + width * 0.35, hi, h));
+}
+
+float CloudLayerBands(float h, float4 peaks, float4 widths)
+{
+    if (widths.x < 1e-4)
+        return 1.0;
+    float e = CloudLayerBand(h, peaks.x, widths.x);
+    e = max(e, CloudLayerBand(h, peaks.y, widths.y));
+    e = max(e, CloudLayerBand(h, peaks.z, widths.z));
+    e = max(e, CloudLayerBand(h, peaks.w, widths.w));
+    return saturate(e);
+}
+
 // Schneider / Nubis: stratus, cumulus, cumulonimbus as height profiles.
 // type 0 = thin low deck, 1 = tall tower + anvil. Convection lifts the anvil.
-float CloudHeightGradient(float h, float type, float convection)
+// Layer peaks stack extra decks inside the allowed column. Inner wall is
+// thin when the volume hugs terrain (GBuffer clips voxels).
+float CloudHeightGradient(float h, float type, float convection,
+    float4 peaks, float4 widths, float terrainHug)
 {
     float t = saturate(type);
     float stratus = smoothstep(0.00, 0.06, h) * (1.0 - smoothstep(0.16, 0.30, h));
@@ -66,7 +90,13 @@ float CloudHeightGradient(float h, float type, float convection)
         * saturate(t * 1.35 - 0.35) * saturate(convection);
     float mid = lerp(cumulus, nimbus, saturate(t * 1.6 - 0.55));
     float body = lerp(stratus, mid, saturate(t * 1.25));
-    return saturate(body + anvil);
+    float innerWall = CloudRemap01(h, 0.0, terrainHug > 0.5 ? 0.03 : 0.10);
+    float outerWall = 1.0 - CloudRemap01(h, 0.88, 1.0);
+    float bands = CloudLayerBands(h, peaks, widths);
+    // Pertam layer peaks remap to a few thin 0–1 bands. Multiplying the
+    // whole column by that punched holes (h 0.08–0.26 empty). Keep a floor
+    // so weather still fills the allowed min/max shell.
+    return saturate(body + anvil) * innerWall * outerWall * max(bands, 0.42);
 }
 
 float4 CloudSampleShape(Texture3D shapeTex, float3 worldPos, float3 center, float volumeSize,
@@ -91,6 +121,9 @@ float CloudBaseFromWeather(
     float3 wind,
     float3 up,
     float cirrusStrength,
+    float4 layerPeaks,
+    float4 layerWidths,
+    float terrainHug,
     Texture3D shapeTex,
     Texture3D weatherTex,
     out float4 weather)
@@ -101,7 +134,7 @@ float CloudBaseFromWeather(
     // Planet-wide coverage from the weather map. Do not multiply by population
     // (that zeroed 3/4 of the globe into one storm island / pie-slice).
     float coverage = saturate(CloudRemap01(weather.r * coverageScale, 0.22, 0.90));
-    float height = CloudHeightGradient(h, type, weather.a);
+    float height = CloudHeightGradient(h, type, weather.a, layerPeaks, layerWidths, terrainHug);
     if (coverage * height < 1e-4 && cirrusStrength < 0.02)
         return 0.0;
 

@@ -24,6 +24,9 @@ public sealed class CloudSnapshot
     public readonly float FadeOutRelEnd;
     public readonly int PlanetSeed;
     public readonly string WeatherTexture;
+    public readonly Vector4 LayerPeaks;
+    public readonly Vector4 LayerWidths;
+    public readonly float TerrainHug;
 
     public CloudSnapshot(
         Vector3D planetCenter,
@@ -41,7 +44,10 @@ public sealed class CloudSnapshot
         float fadeOutRelStart,
         float fadeOutRelEnd,
         int planetSeed,
-        string weatherTexture)
+        string weatherTexture,
+        Vector4 layerPeaks,
+        Vector4 layerWidths,
+        float terrainHug)
     {
         PlanetCenter = planetCenter;
         InnerRadius = innerRadius;
@@ -59,5 +65,8 @@ public sealed class CloudSnapshot
         FadeOutRelEnd = fadeOutRelEnd;
         PlanetSeed = planetSeed;
         WeatherTexture = weatherTexture;
+        LayerPeaks = layerPeaks;
+        LayerWidths = layerWidths;
+        TerrainHug = terrainHug;
     }
 }

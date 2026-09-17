@@ -1,4 +1,4 @@
-// helpers: CloudLighting.hlsli v9 — HZD beer-powder sun * vis; dim height-varying ambient
+// helpers: CloudLighting.hlsli v11 — HZD beer-powder; Slice AM ambient is pre-scaled
 #ifndef CLOUD_LIGHTING_HLSLI
 #define CLOUD_LIGHTING_HLSLI
 
@@ -37,8 +37,10 @@ float3 CloudLitRadiance(float3 albedo, float3 sunCol, float3 sky, float h, float
     float beer = exp(-od);
     float powder = 1.0 - beer * beer;
     float3 sunLit = sunCol * albedo * beer * lerp(0.78, 1.12, powder) * CloudPhase(cosViewSun) * vis;
-    // HZD: ambient grows with height and stays << sun. Do not hdr-lift this.
-    float3 ambient = sky * albedo * lerp(0.70, 1.05, h * h);
+    // Slice AM: sky is AnomalyVolumeNight (already albedo-scaled). Do not
+    // multiply albedo again. Dest luma is not an illuminant. Height still
+    // lifts thin high decks.
+    float3 ambient = sky * lerp(0.88, 1.06, h * h);
     return sunLit + ambient;
 }
 

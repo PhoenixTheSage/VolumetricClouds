@@ -1,6 +1,11 @@
-// helpers: CloudDensity.hlsli v11 CloudLighting.hlsli v9 (fingerprint v12)
-// IsolatedMix: rgb LBuffer energy. Shell stays inside AtmosphereRadius.
-// Sun × AnomalySunVisibility. Night fill is AnomalyVolumeAmbient (extras).
+// helpers: CloudDensity.hlsli v15 CloudLighting.hlsli v11 (fingerprint v22)
+// IsolatedMix: rgb LBuffer energy. Inner/outer are density, not occluders.
+// Per-sample AnomalySunTransmittance (monotonic squared limb). Night AJ × 0.05.
+// hdrLift only in deep day — twilight * HdrLift was a white wall at the cut.
+
+#ifndef CLOUD_DEBUG_SUN_VIS
+#define CLOUD_DEBUG_SUN_VIS 0
+#endif
 
 #define ANOMALY_PACK_SRV0_TYPE Texture3D
 #define ANOMALY_PACK_SRV1_TYPE Texture3D
@@ -17,6 +22,9 @@
 #define VolumeHdr AnomalyPassUniform5
 #define PlanetUp AnomalyPassUniform6.xyz
 #define CamToShell AnomalyPassUniform6.w
+#define LayerPeaks AnomalyPassUniform7
+#define LayerWidths AnomalyPassUniform8
+#define TerrainHug AnomalyPassUniform9.x
 #define ShapeTex AnomalyPackSrv0
 #define DetailTex AnomalyPackSrv1
 #define WeatherTex AnomalyPackSrv2
@@ -42,18 +50,38 @@ float2 RaySphere(float3 origin, float3 dir, float3 center, float radius)
     return float2(-b - s, -b + s);
 }
 
-bool ShellInterval(float3 origin, float3 dir, float3 center, float inner, float outer, out float t0, out float t1)
+// Inner/outer are density bounds. Do not clip t1 at inner — that is the
+// screenshot-2 limb when the camera sits just above the deck. Atmosphere
+// proxy does not write depth. GBuffer linear depth occludes voxels/grids.
+// From orbit, the planet body hides the far shell; in-atmosphere sky
+// pixels must not hit a hill-radius sphere (that recreates the limb).
+bool ShellInterval(float3 origin, float3 dir, float3 center, float inner, float outer,
+    float planetR, float sceneDist, bool fromOrbit, out float t0, out float t1)
 {
     float2 oHit = RaySphere(origin, dir, center, outer);
     if (oHit.y < 0)
         return false;
-    float2 iHit = RaySphere(origin, dir, center, inner);
     t0 = max(oHit.x, 0.0);
     t1 = oHit.y;
-    if (iHit.x >= 0.0)
-        t1 = min(t1, iHit.x);
-    else if (iHit.y > t0)
-        t0 = max(t0, iHit.y);
+    t1 = min(t1, sceneDist);
+    // Hide the far shell with the hill sphere only when the deck actually
+    // clears the peaks. A column inside MaximumRadius (max height 0.55 on
+    // Pertam: 30.6 km < hills 30.8 km) made t1 < t0 from orbit, so IsolatedMix
+    // wrote nothing. GBuffer still occludes terrain. Atmosphere_sphere is
+    // not skipped and does not write depth.
+    if (fromOrbit && planetR + 1.0 < outer)
+    {
+        float2 pHit = RaySphere(origin, dir, center, planetR);
+        if (pHit.x >= 0.0)
+            t1 = min(t1, pHit.x);
+    }
+    float3 oc = origin - center;
+    if (dot(oc, oc) < inner * inner)
+    {
+        float2 iHit = RaySphere(origin, dir, center, inner);
+        if (iHit.y > t0)
+            t0 = max(t0, iHit.y);
+    }
     return t1 > t0;
 }
 
@@ -96,8 +124,9 @@ float4 __pixel_shader(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float hdrLift = VolumeHdr.y;
     float hillRadius = VolumeHdr.z > 1.0 ? VolumeHdr.z : inner;
     float atmoRadius = VolumeHdr.w > hillRadius ? VolumeHdr.w : hillRadius * 1.12;
-    float atmoCeil = atmoRadius * 0.90;
-    outer = min(outer, atmoCeil);
+    // Slice AK extras: clamp the density outer to the optical limb.
+    // Fail closed (extras 0) leaves pack uniforms. Do not raise outer.
+    outer = AnomalyClampRadialToCeil(outer);
     inner = min(inner, outer - 40.0);
     float3 up = PlanetUp;
     if (dot(up, up) < 1e-4)
@@ -119,22 +148,20 @@ float4 __pixel_shader(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 
     float viewZ = AnomalyLinearDepth.SampleLevel(AnomalyPointSampler, uv, 0);
     float sceneDist = viewZ > 0 ? length(viewRay) * viewZ : 1e7;
+    float camR = length(center);
+    bool fromOrbit = camR > outer * 1.05;
 
     float t0, t1;
-    if (!ShellInterval(origin, rayDir, center, inner, outer, t0, t1))
-    {
-        WriteColor(output, 0, 0);
-        return output;
-    }
-    t1 = min(t1, sceneDist);
-    if (t1 <= t0)
+    if (!ShellInterval(origin, rayDir, center, inner, outer, hillRadius, sceneDist,
+        fromOrbit, t0, t1))
     {
         WriteColor(output, 0, 0);
         return output;
     }
 
     float shellThickness = max(outer - inner, 1.0);
-    float marchLength = min(t1 - t0, shellThickness * 4.0);
+    float maxChord = 2.0 * sqrt(max(outer * outer - inner * inner, 1.0));
+    float marchLength = min(t1 - t0, max(maxChord, shellThickness * 4.0));
     t1 = t0 + marchLength;
 
     int steps = AnomalyMarchSteps(stepBudget, 12, CLOUD_MAX_STEPS,
@@ -148,9 +175,18 @@ float4 __pixel_shader(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float transmittance = 1.0;
 
     float3 sunCol = AnomalySunColor * max(AnomalySunDiffuse, 1.0);
-    sunCol *= hdrLift;
-    float3 sky = AnomalyVolumeAmbient();
-    float wrap = max(atmoRadius - hillRadius, hillRadius * 0.06);
+    float airTop = AnomalyVolumeCeil();
+    if (airTop < hillRadius + 40.0)
+        airTop = atmoRadius;
+
+#if CLOUD_DEBUG_SUN_VIS
+    {
+        float3 p = origin + rayDir * t0;
+        float v = AnomalySunTransmittance(p, center, hillRadius, airTop);
+        WriteColor(output, v.xxx, 1.0);
+        return output;
+    }
+#endif
 
     [loop]
     for (int i = 0; i < CLOUD_MAX_STEPS; i++)
@@ -163,19 +199,23 @@ float4 __pixel_shader(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
         float3 samplePos = origin + rayDir * t;
         float4 weather;
         float base = CloudBaseFromWeather(samplePos, center, inner, outer, coverage,
-            volumeSize, wind, up, cirrus, ShapeTex, WeatherTex, weather);
+            volumeSize, wind, up, cirrus, LayerPeaks, LayerWidths, TerrainHug,
+            ShapeTex, WeatherTex, weather);
         float density = CloudDensityFromBase(base, samplePos, center, volumeSize, inner,
             wind, weather, DetailTex);
         float entry = CloudRemap01(t, 80.0, 480.0);
         float radial = length(samplePos - center);
-        float atmoFade = 1.0 - CloudRemap01(radial, atmoCeil * 0.92, atmoCeil);
-        float sunVis = AnomalySunVisibility(samplePos, center, hillRadius, wrap);
+        float atmoFade = AnomalyVolumeCeilFade(radial)
+            * (1.0 - CloudRemap01(radial, max(outer * 0.96, inner + 1.0), outer));
         density *= densityMul * entry * atmoFade;
         if (density <= 1e-5)
             continue;
 
+        float sunVis = AnomalySunTransmittance(samplePos, center, hillRadius, airTop);
+        float3 sunLitCol = sunCol * lerp(1.0, hdrLift, smoothstep(0.72, 1.0, saturate(sunVis)));
         float h = CloudAltitude01(samplePos, center, inner, outer);
-        float3 radiance = CloudLitRadiance(albedo, sunCol, sky, h, density,
+        float3 sky = AnomalyVolumeNight(albedo, sunVis);
+        float3 radiance = CloudLitRadiance(albedo, sunLitCol, sky, h, density,
             dot(rayDir, sunToward), sunVis);
         float weight = CloudSegmentInscatter(density, dt);
         accum += transmittance * radiance * weight;

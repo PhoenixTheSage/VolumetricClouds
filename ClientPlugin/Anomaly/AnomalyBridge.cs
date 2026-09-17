@@ -4,6 +4,7 @@ using System.Reflection;
 using ClientPlugin.Clouds;
 using VRage.Render11.Resources;
 using VRage.Utils;
+using VRageMath;
 
 namespace ClientPlugin.Anomaly;
 
@@ -24,6 +25,7 @@ internal static class AnomalyBridge
     const string OwnedPassType = "ClientPlugin.Shaders.OwnedPassRegistry";
     const string CatalogType = "ClientPlugin.Buffers.BufferCatalog";
     const string PublishedType = "ClientPlugin.Buffers.PublishedBuffer";
+    const string PlanetAtmosphereType = "ClientPlugin.Shaders.PlanetAtmosphere";
 
     static readonly object Gate = new();
     static bool registered;
@@ -36,6 +38,7 @@ internal static class AnomalyBridge
     static object detailPublished;
     static object weatherPublished;
     static MethodInfo publishedPublish;
+    static MethodInfo tryGetRadii;
 
     public static bool IsRegistered
     {
@@ -88,6 +91,7 @@ internal static class AnomalyBridge
             Type owned = null;
             Type catalog = null;
             Type published = null;
+            Type planetAtmo = null;
             foreach (var assembly in SafeAssemblies())
             {
                 packType ??= assembly.GetType(PackRegistryType, false, false);
@@ -95,6 +99,7 @@ internal static class AnomalyBridge
                 owned ??= assembly.GetType(OwnedPassType, false, false);
                 catalog ??= assembly.GetType(CatalogType, false, false);
                 published ??= assembly.GetType(PublishedType, false, false);
+                planetAtmo ??= assembly.GetType(PlanetAtmosphereType, false, false);
             }
 
             if (packType == null)
@@ -122,6 +127,7 @@ internal static class AnomalyBridge
                 publishedPublish = published.GetMethod("Publish", BindingFlags.Public | BindingFlags.Instance);
             }
 
+            tryGetRadii = planetAtmo?.GetMethod("TryGetRadii", BindingFlags.Public | BindingFlags.Static);
             catalog?.GetMethod("RegisterLifetime", BindingFlags.Public | BindingFlags.Static)
                 ?.Invoke(null, new object[]
                 {
@@ -154,6 +160,39 @@ internal static class AnomalyBridge
             PublishOne(ShapeName, shapePublished, CloudTextures.Shape);
             PublishOne(DetailName, detailPublished, CloudTextures.Detail);
             PublishOne(WeatherName, weatherPublished, CloudTextures.Weather);
+        }
+    }
+
+    /// <summary>
+    /// Slice AK extras for this world-space planet center. False when
+    /// Anomaly has no snapshot or published a different planet.
+    /// </summary>
+    public static bool TryGetCeilings(Vector3D worldCenter, out float airTop, out float visualCeil)
+    {
+        airTop = 0f;
+        visualCeil = 0f;
+        MethodInfo method;
+        lock (Gate)
+        {
+            if (tryGetRadii == null)
+                ProbePlanetAtmosphereUnlocked();
+            method = tryGetRadii;
+        }
+
+        if (method == null)
+            return false;
+        try
+        {
+            var args = new object[] { worldCenter, 64f, 0f, 0f };
+            if (method.Invoke(null, args) is not true)
+                return false;
+            airTop = (float)args[2];
+            visualCeil = (float)args[3];
+            return visualCeil > 1f;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -225,6 +264,28 @@ internal static class AnomalyBridge
             {
                 // Anomaly already tearing down.
             }
+        }
+    }
+
+    static void ProbePlanetAtmosphereUnlocked()
+    {
+        if (tryGetRadii != null)
+            return;
+        foreach (var assembly in SafeAssemblies())
+        {
+            Type type;
+            try
+            {
+                type = assembly.GetType(PlanetAtmosphereType, false, false);
+            }
+            catch
+            {
+                continue;
+            }
+
+            tryGetRadii = type?.GetMethod("TryGetRadii", BindingFlags.Public | BindingFlags.Static);
+            if (tryGetRadii != null)
+                return;
         }
     }
 

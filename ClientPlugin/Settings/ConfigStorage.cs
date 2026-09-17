@@ -104,7 +104,11 @@ public static class ConfigStorage
         try
         {
             using (var streamReader = File.OpenText(path))
-                return (Config)Serializer.Deserialize(streamReader) ?? Config.Default;
+            {
+                var loaded = (Config)Serializer.Deserialize(streamReader) ?? Config.Default;
+                MigrateHeight(loaded);
+                return loaded;
+            }
         }
         catch (Exception)
         {
@@ -112,5 +116,18 @@ public static class ConfigStorage
         }
 
         return Config.Default;
+    }
+
+    /// <summary>
+    /// 0.55 was a short-lived default that buried Pertam's entire deck under
+    /// MaximumRadius (~30.8 km). New default is 1 (visual air top). Current
+    /// is not assigned yet during Load, so the property set does not flush.
+    /// </summary>
+    static void MigrateHeight(Config config)
+    {
+        if (config == null)
+            return;
+        if (Math.Abs(config.MaxAltitude - 0.55f) < 0.0005f)
+            config.MaxAltitude = 1f;
     }
 }

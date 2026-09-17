@@ -24,9 +24,9 @@ Settings write `{UserDataPath}/Storage/Clouds.cfg` after the sliders are quiet (
 
 ## Functionality
 
-- AfterAtmosphere IsolatedMix program (`volumetric.clouds`). Clouds occlude sky and sun.
-- Nearest planet that has `CloudLayers` supplies shell altitude, tint, wind, and the weather map.
-- Harmony skip of Keen `MyCloudRenderer.Render` while the pack is registered, enabled, and **Replace vanilla layers** is on. Turn that off (or disable the pack) to bring Keen spheres back.
+- AfterAtmosphere IsolatedMix program (`volumetric.clouds`). Clouds occlude sky and sun. The march clips with GBuffer linear depth (voxels/grids) only — Keen `Atmosphere_sphere` is not skipped and does not write depth.
+- Nearest planet that has `CloudLayers` supplies tint, wind, weather, and height-band peaks. **Min / max height** are 0–1 of the allowed column: 0 = terrain (`MinimumRadius`), 1 = Anomaly visual ceiling (`AnomalyVisualAtmoCeil` / gameplay air top). CloudLayer `RelativeAltitude` is remapped to stacked decks inside that range. The march still does not clip on inner/outer / `Atmosphere_sphere`.
+- Harmony skip of Keen `MyCloudRenderer.Render` while the pack is registered, enabled, and **Replace vanilla layers** is on. Turn that off (or disable the pack) to bring Keen spheres back. `MyAtmosphereRenderer` is not patched.
 - Quality presets: Low 16 / Medium 24 / High 32 / Ultra 48 view steps (light march 2 / 3 / 4 / 4). Camera motion drops steps via Anomaly `SafetyScale`.
 - Optional HDR lift when an HdrRender-class Display tenant is live.
 - With SE-DLSS, some sky-through-cloud ghosting is expected in v1 (color in, no cloud motion vectors).
@@ -40,8 +40,9 @@ Anomaly Show Status should list `Fullscreen: AfterAtmosphere/IsolatedMix:volumet
 | Enabled | on | Master switch |
 | Replace vanilla layers | on | Hide Keen CloudSphere draws |
 | Quality | High | Raymarch / light-step budget |
-| Coverage / Density | 1.0 / 0.35 | Weather scale and optical density |
-| Thickness | 0.04 | Shell thickness as a fraction of planet radius |
+| Coverage / Density | 1.15 / 0.55 | Weather scale and optical density |
+| Min height | 0 | Bottom of the volume as 0–1 of terrain → visual air top |
+| Max height | 1 | Top of the volume. 1 = air top (clears hill peaks). Values that keep the deck under `MaximumRadius` hide it from orbit |
 | Wind speed | 1 | Weather-map drift (full wrap ~15 min at 1) plus planet layer spin |
 | Cirrus | 0.55 | High-altitude ice veil in the upper shell |
 | Albedo tint | white | Multiplies the planet layer color |

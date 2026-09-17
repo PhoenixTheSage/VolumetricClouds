@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using ClientPlugin.Clouds;
 using ClientPlugin.Settings;
 using VRage.Utils;
 using VRageMath;
@@ -14,11 +15,16 @@ internal static class AnomalyTerminalHook
 
     static readonly object Gate = new();
     static bool installed;
+    static bool overlayInstalled;
+    static object pageInstance;
+    static Type pageType;
+    static string lastHud;
 
     public static bool TryInstall()
     {
         lock (Gate)
         {
+            TryInstallOverlay();
             if (installed)
                 return true;
 
@@ -31,6 +37,26 @@ internal static class AnomalyTerminalHook
             MyLog.Default.WriteLine($"{Plugin.Name}: Rich HUD page under Anomaly Shaders / {FolderTitle} / {SettingsPage}");
             return true;
         }
+    }
+
+    public static void TryRefresh()
+    {
+        object page;
+        Type t;
+        lock (Gate)
+        {
+            page = pageInstance;
+            t = pageType;
+        }
+
+        if (page == null || t == null)
+            return;
+
+        var line = CloudSampler.HudLine ?? "No planet in range yet";
+        if (line == lastHud)
+            return;
+        lastHud = line;
+        Invoke(t, page, "Refresh");
     }
 
     static object RequestPage()
@@ -69,9 +95,58 @@ internal static class AnomalyTerminalHook
         return null;
     }
 
+    static void TryInstallOverlay()
+    {
+        if (overlayInstalled)
+            return;
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly == null || assembly == typeof(AnomalyTerminalHook).Assembly)
+                continue;
+
+            Type registry;
+            try
+            {
+                registry = assembly.GetType("ClientPlugin.RichHud.HudOverlayRegistry", false, false);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (registry == null)
+                continue;
+
+            var register = registry.GetMethod("Register", BindingFlags.Public | BindingFlags.Static,
+                null, new[] { typeof(string), typeof(Func<string>) }, null);
+            if (register == null)
+                continue;
+
+            try
+            {
+                register.Invoke(null, new object[]
+                {
+                    "volumetric.clouds",
+                    (Func<string>)(() => CloudSampler.HudLine)
+                });
+                overlayInstalled = true;
+                return;
+            }
+            catch (Exception e)
+            {
+                MyLog.Default.Warning($"{Plugin.Name}: HudOverlay Register failed: {e.Message}");
+                return;
+            }
+        }
+    }
+
     static void Populate(object page)
     {
         var t = page.GetType();
+        pageInstance = page;
+        pageType = t;
+        lastHud = null;
         Invoke(t, page, "Category", "Volumetric Clouds");
         Invoke(t, page, "Checkbox", "Enabled",
             (Func<bool>)(() => Config.Current.Enabled),
@@ -93,10 +168,21 @@ internal static class AnomalyTerminalHook
             (Func<float>)(() => Config.Current.Density),
             (Action<float>)(v => Set(() => Config.Current.Density = v)),
             "Cloud optical density", 0.01f);
-        Invoke(t, page, "Slider", "Thickness", 0.01f, 0.12f,
-            (Func<float>)(() => Config.Current.Thickness),
-            (Action<float>)(v => Set(() => Config.Current.Thickness = v)),
-            "Shell thickness as a fraction of planet radius", 0.005f);
+
+        Invoke(t, page, "Category", "Height",
+            "0 = terrain, 1 = visual air top. Live km is the Clouds overlay when Master is in the world.");
+        Invoke(t, page, "Label", "Column",
+            (Func<string>)(() => CloudSampler.HudLine ?? "No planet in range yet"));
+        Invoke(t, page, "Slider", "Min height", 0f, 1f,
+            (Func<float>)(() => Config.Current.BaseAltitude),
+            (Action<float>)(v => Set(() => Config.Current.BaseAltitude = v)),
+            "Bottom of the cloud column. 0 = terrain, 1 = visual atmosphere edge", 0.01f);
+        Invoke(t, page, "Slider", "Max height", 0f, 1f,
+            (Func<float>)(() => Config.Current.MaxAltitude),
+            (Action<float>)(v => Set(() => Config.Current.MaxAltitude = v)),
+            "Top of the cloud column. 0 = terrain, 1 = visual atmosphere edge (air top). Raise to 1 so the deck clears hill tops.", 0.01f);
+
+        Invoke(t, page, "Category", "Appearance");
         Invoke(t, page, "Slider", "Wind speed", 0f, 8f,
             (Func<float>)(() => Config.Current.WindSpeed),
             (Action<float>)(v => Set(() => Config.Current.WindSpeed = v)),

@@ -61,6 +61,7 @@ public class Plugin : IPlugin
         try
         {
             CloudSampler.Update();
+            AnomalyTerminalHook.TryRefresh();
         }
         catch (Exception e)
         {

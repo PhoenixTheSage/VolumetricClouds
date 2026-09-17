@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using ClientPlugin.Clouds;
 using ClientPlugin.Settings;
 using ClientPlugin.Settings.Elements;
 using VRageMath;
@@ -25,6 +26,8 @@ public class Config : INotifyPropertyChanged
     private float coverage = 1.15f;
     private float density = 0.55f;
     private float thickness = 0.055f;
+    private float baseAltitude = 0f;
+    private float maxAltitude = 1f;
     private float windSpeed = 1.0f;
     private float cirrusStrength = 0.55f;
     private Color albedoTint = Color.White;
@@ -75,7 +78,23 @@ public class Config : INotifyPropertyChanged
         set => SetField(ref density, value);
     }
 
-    [Slider(0.01f, 0.12f, 0.005f, SliderAttribute.SliderType.Float, description: "Shell thickness as a fraction of planet radius")]
+    [Separator("Height (0 = terrain, 1 = air top)")]
+
+    [Slider(0f, 1f, 0.01f, SliderAttribute.SliderType.Float, label: "Min height", description: "Bottom of the cloud column. 0 = terrain, 1 = visual atmosphere edge. 1 is required for the deck to clear hill tops.")]
+    public float BaseAltitude
+    {
+        get => baseAltitude;
+        set => SetField(ref baseAltitude, value);
+    }
+
+    [Slider(0f, 1f, 0.01f, SliderAttribute.SliderType.Float, label: "Max height", description: "Top of the cloud column. 0 = terrain, 1 = visual atmosphere edge (air top). Values below hill tops hide the deck from orbit.")]
+    public float MaxAltitude
+    {
+        get => maxAltitude;
+        set => SetField(ref maxAltitude, value);
+    }
+
+    /// <summary>Kept for old Clouds.cfg. Height is Min/Max now.</summary>
     public float Thickness
     {
         get => thickness;
@@ -186,7 +205,13 @@ public class Config : INotifyPropertyChanged
         field = value;
         OnPropertyChanged(propertyName);
         if (ReferenceEquals(this, Current))
+        {
             ConfigStorage.Save(this);
+            if (propertyName == nameof(BaseAltitude) ||
+                propertyName == nameof(MaxAltitude) ||
+                propertyName == nameof(Enabled))
+                CloudSampler.Invalidate();
+        }
         return true;
     }
 

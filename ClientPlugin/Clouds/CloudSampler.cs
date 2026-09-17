@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using ClientPlugin.Anomaly;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Planet;
 using Sandbox.Game.World;
@@ -19,12 +21,25 @@ public static class CloudSampler
 
     static int frameCounter;
     static bool active;
+    static bool dirty = true;
     static long loggedPlanetId;
+    static float loggedInner;
+    static float loggedOuter;
+    static string hudLine;
+
+    /// <summary>Cached HUD/overlay line. HUD draw thread reads this; game thread writes.</summary>
+    public static string HudLine => hudLine;
+
+    public static void Invalidate()
+    {
+        dirty = true;
+    }
 
     public static void Update()
     {
-        if (frameCounter++ % UpdateInterval != 0)
+        if (!dirty && frameCounter++ % UpdateInterval != 0)
             return;
+        dirty = false;
 
         CloudRenderer.Publish(BuildSnapshot());
     }
@@ -32,15 +47,23 @@ public static class CloudSampler
     public static void OnSessionUnloading()
     {
         active = false;
+        dirty = true;
         loggedPlanetId = 0;
+        loggedInner = 0f;
+        loggedOuter = 0f;
+        hudLine = null;
         CloudRenderer.Publish(null);
     }
 
-    static void LogPlanet(MyPlanet planet, string detail)
+    static void LogPlanet(MyPlanet planet, float inner, float outer, string detail)
     {
-        if (planet.EntityId == loggedPlanetId)
+        if (planet.EntityId == loggedPlanetId &&
+            Math.Abs(inner - loggedInner) < 40f &&
+            Math.Abs(outer - loggedOuter) < 40f)
             return;
         loggedPlanetId = planet.EntityId;
+        loggedInner = inner;
+        loggedOuter = outer;
         MyLog.Default.Info($"{Plugin.Name}: nearest cloud planet '{planet.Generator?.Id.SubtypeName}': {detail}");
     }
 
@@ -50,36 +73,51 @@ public static class CloudSampler
         if (!config.Enabled)
         {
             active = false;
+            hudLine = null;
             return null;
         }
 
         if (MySession.Static == null || MySector.MainCamera == null || MyPlanets.Static == null)
         {
             active = false;
+            hudLine = null;
             return null;
         }
 
         var cameraPosition = MySector.MainCamera.Position;
         MyPlanet planet = null;
+        MyPlanet atmospherePlanet = null;
         double planetDistance = double.MaxValue;
+        double atmosphereDistance = double.MaxValue;
         foreach (var candidate in MyPlanets.GetPlanets())
         {
             if (candidate == null || candidate.Closed)
                 continue;
-            var layers = candidate.Generator?.CloudLayers;
-            if (layers == null || layers.Count == 0)
-                continue;
             double candidateDistance = (cameraPosition - candidate.PositionComp.GetPosition()).Length();
-            if (candidateDistance < planetDistance)
+            var layers = candidate.Generator?.CloudLayers;
+            if (layers != null && layers.Count > 0 && candidateDistance < planetDistance)
             {
                 planetDistance = candidateDistance;
                 planet = candidate;
+            }
+
+            if (candidate.HasAtmosphere && candidateDistance < atmosphereDistance)
+            {
+                atmosphereDistance = candidateDistance;
+                atmospherePlanet = candidate;
             }
         }
 
         if (planet == null)
         {
+            planet = atmospherePlanet;
+            planetDistance = atmosphereDistance;
+        }
+
+        if (planet == null)
+        {
             active = false;
+            hudLine = null;
             return null;
         }
 
@@ -91,14 +129,16 @@ public static class CloudSampler
         if (planetDistance > range)
         {
             active = false;
+            hudLine = null;
             return null;
         }
 
         active = true;
 
-        DeriveShell(planet, config, atmosphere, out float inner, out float outer, out Vector3 albedo,
+        DeriveShell(planet, config, out float inner, out float outer, out float visualCeil, out Vector3 albedo,
             out Vector3 rotationAxis, out float angularVelocity, out float fadeOutStart,
-            out float fadeOutEnd, out string weatherTexture);
+            out float fadeOutEnd, out string weatherTexture,
+            out Vector4 layerPeaks, out Vector4 layerWidths, out float terrainHug);
 
         var up = (Vector3)planet.WorldMatrix.Up;
         up.Normalize();
@@ -114,21 +154,22 @@ public static class CloudSampler
         if (!string.IsNullOrEmpty(weatherTexture))
             seed ^= weatherTexture.GetHashCode();
 
-        LogPlanet(planet, $"shell {inner / 1000f:0.#}-{outer / 1000f:0.#} km, layers {planet.Generator.CloudLayers.Count}");
+        int layerCount = planet.Generator?.CloudLayers?.Count ?? 0;
+        LogPlanet(planet, inner, outer,
+            $"shell {inner / 1000f:0.#}-{outer / 1000f:0.#} km, hills {planet.MaximumRadius / 1000f:0.#} km, ceil {visualCeil / 1000f:0.#} km, layers {layerCount}");
+        hudLine = $"{planet.Generator?.Id.SubtypeName ?? "planet"}  {inner / 1000f:0.#}–{outer / 1000f:0.#} km  (hills {planet.MaximumRadius / 1000f:0.#}, ceil {visualCeil / 1000f:0.#})";
 
         return new CloudSnapshot(center, inner, outer, up, rotationAxis, angularVelocity, albedo,
             fadeStart, fadeEnd, minScaled, planet.MaximumRadius, atmosphere, fadeOutStart, fadeOutEnd, seed,
-            weatherTexture);
+            weatherTexture, layerPeaks, layerWidths, terrainHug);
     }
 
-    static void DeriveShell(MyPlanet planet, Config config, float atmosphere,
-        out float inner, out float outer,
+    static void DeriveShell(MyPlanet planet, Config config,
+        out float inner, out float outer, out float visualCeil,
         out Vector3 albedo, out Vector3 rotationAxis, out float angularVelocity,
-        out float fadeOutStart, out float fadeOutEnd, out string weatherTexture)
+        out float fadeOutStart, out float fadeOutEnd, out string weatherTexture,
+        out Vector4 layerPeaks, out Vector4 layerWidths, out float terrainHug)
     {
-        double midHill = (planet.AverageRadius + planet.MaximumRadius) * 0.5;
-        double minAlt = double.MaxValue;
-        double maxAlt = 0;
         var colorSum = Vector4.Zero;
         int colorCount = 0;
         rotationAxis = Vector3.Zero;
@@ -137,18 +178,23 @@ public static class CloudSampler
         fadeOutEnd = 0f;
         weatherTexture = null;
         int axisCount = 0;
+        var rels = new List<float>(4);
+        var layers = planet.Generator?.CloudLayers;
 
-        foreach (MyCloudLayerSettings layer in planet.Generator.CloudLayers)
+        if (layers != null)
         {
-            if (layer == null)
-                continue;
-            double altitude = midHill + (planet.MaximumRadius - midHill) * layer.RelativeAltitude;
-            minAlt = Math.Min(minAlt, altitude);
-            maxAlt = Math.Max(maxAlt, altitude);
+            foreach (MyCloudLayerSettings layer in layers)
+            {
+                if (layer == null)
+                    continue;
+            // RelativeAltitude is hill amplitude on Keen CloudSphere. Remap
+            // it to 0–1 peaks inside the allowed column (not meters AGL).
             colorSum += layer.Color.ToLinearRGB();
             colorCount++;
             fadeOutStart += layer.FadeOutRelativeAltitudeStart;
             fadeOutEnd += layer.FadeOutRelativeAltitudeEnd;
+            if (rels.Count < 4)
+                rels.Add(layer.RelativeAltitude);
             if (weatherTexture == null && layer.Textures != null && layer.Textures.Count > 0)
                 weatherTexture = layer.Textures[0];
             if (layer.RotationAxis != Vector3D.Zero)
@@ -157,38 +203,38 @@ public static class CloudSampler
                 axisCount++;
             }
             angularVelocity += layer.AngularVelocity;
+            }
         }
 
-        if (minAlt >= maxAlt)
-        {
-            minAlt = planet.MaximumRadius * 0.98;
-            maxAlt = planet.MaximumRadius * 1.02;
-        }
+        float hillTop = planet.MaximumRadius;
+        float avg = planet.AverageRadius;
+        float terrain = planet.MinimumRadius > avg * 0.5f ? planet.MinimumRadius : avg;
+        var center = planet.PositionComp.GetPosition();
+        // Slice AK extras when this planet matches Anomaly's snapshot.
+        // Fail closed to the same formula as PlanetAtmosphere.TryComputeRadii
+        // (air top, not 0.90× / 0.72× AtmosphereRadius).
+        float airTop;
+        if (!AnomalyBridge.TryGetCeilings(center, out airTop, out visualCeil) ||
+            visualCeil <= terrain + 80f)
+            ComputeCeilings(planet, avg, terrain, hillTop, out airTop, out visualCeil);
 
-        // Geometric AtmosphereRadius is outside the visual scattering limb.
-        // Never author a shell past that ceiling (and never drop the ceiling
-        // when the Keen CloudLayer altitudes already sit near it).
-        float atmoCeil = atmosphere > planet.MaximumRadius + 200f
-            ? atmosphere * 0.90f
-            : planet.MaximumRadius * 1.06f;
-        float thickness = Math.Max(config.Thickness, 0.01f) * planet.AverageRadius;
-        float room = Math.Max(atmoCeil - planet.MaximumRadius - 80f, 400f);
-        thickness = Math.Min(thickness, room);
-
-        inner = (float)Math.Max(minAlt - thickness * 0.15, planet.MaximumRadius + 80.0);
-        inner = Math.Min(inner, atmoCeil - 400f);
-        inner = Math.Max(inner, planet.MaximumRadius + 80f);
-
-        float deck = Math.Max(Math.Min(thickness, atmoCeil - inner), 400f);
-        float deckOuter = (float)Math.Max(Math.Min(maxAlt + deck * 0.25, atmoCeil), inner + deck);
-        outer = Math.Min(deckOuter, atmoCeil);
-        if (outer < inner + 200f)
-            outer = Math.Min(inner + 400f, atmoCeil);
+        float min01 = MathHelper.Clamp(config.BaseAltitude, 0f, 1f);
+        float max01 = MathHelper.Clamp(config.MaxAltitude, 0f, 1f);
+        if (max01 < min01 + 0.05f)
+            max01 = Math.Min(min01 + 0.05f, 1f);
+        float span = Math.Max(visualCeil - terrain, 200f);
+        inner = terrain + span * min01;
+        outer = Math.Min(terrain + span * max01, visualCeil);
+        if (outer < inner + 80f)
+            outer = Math.Min(inner + 200f, visualCeil);
         if (inner >= outer)
         {
-            inner = Math.Max(atmoCeil - 800f, planet.MaximumRadius + 80f);
-            outer = atmoCeil;
+            inner = terrain;
+            outer = visualCeil;
         }
+
+        terrainHug = inner <= hillTop + 50f ? 1f : 0f;
+        BuildLayerBands(rels, out layerPeaks, out layerWidths);
 
         albedo = colorCount > 0
             ? new Vector3(colorSum.X, colorSum.Y, colorSum.Z) / colorCount
@@ -197,11 +243,79 @@ public static class CloudSampler
             albedo = Vector3.One;
         if (axisCount > 0)
             rotationAxis /= axisCount;
-        if (planet.Generator.CloudLayers.Count > 0)
+        int layerCount = layers?.Count ?? 0;
+        if (layerCount > 0)
         {
-            angularVelocity /= planet.Generator.CloudLayers.Count;
-            fadeOutStart /= planet.Generator.CloudLayers.Count;
-            fadeOutEnd /= planet.Generator.CloudLayers.Count;
+            angularVelocity /= layerCount;
+            fadeOutStart /= layerCount;
+            fadeOutEnd /= layerCount;
+        }
+    }
+
+    // Same as ClientPlugin.Shaders.PlanetAtmosphere.TryComputeRadii.
+    static void ComputeCeilings(MyPlanet planet, float avg, float terrain, float hill,
+        out float airTop, out float visualCeil)
+    {
+        if (avg < terrain * 0.5f)
+            avg = terrain;
+        var airColumn = planet.AtmosphereAltitude;
+        if (airColumn < 200f)
+            airColumn = Math.Max(hill - avg, 200f);
+        airTop = avg + airColumn;
+        visualCeil = airTop;
+        if (visualCeil <= terrain + 80f)
+            visualCeil = terrain + 200f;
+    }
+
+    static void BuildLayerBands(List<float> rels, out Vector4 peaks, out Vector4 widths)
+    {
+        peaks = Vector4.Zero;
+        widths = Vector4.Zero;
+        int n = rels == null ? 0 : rels.Count;
+        if (n <= 0)
+        {
+            peaks.X = 0.42f;
+            widths.X = 0.55f;
+            return;
+        }
+
+        var sorted = rels.ToArray();
+        Array.Sort(sorted);
+        float rMin = sorted[0];
+        float rMax = sorted[n - 1];
+        float span = rMax - rMin;
+        for (int i = 0; i < n; i++)
+        {
+            float p = span < 1e-4f
+                ? (n == 1 ? 0.42f : i / (float)(n - 1))
+                : (sorted[i] - rMin) / span;
+            float prev = i > 0
+                ? (span < 1e-4f ? (i - 1) / (float)(n - 1) : (sorted[i - 1] - rMin) / span)
+                : p;
+            float next = i < n - 1
+                ? (span < 1e-4f ? (i + 1) / (float)(n - 1) : (sorted[i + 1] - rMin) / span)
+                : p;
+            float gap = Math.Max(p - prev, next - p);
+            float w = Math.Max(0.22f, 0.55f * gap + 0.12f);
+            switch (i)
+            {
+                case 0:
+                    peaks.X = p;
+                    widths.X = w;
+                    break;
+                case 1:
+                    peaks.Y = p;
+                    widths.Y = w;
+                    break;
+                case 2:
+                    peaks.Z = p;
+                    widths.Z = w;
+                    break;
+                default:
+                    peaks.W = p;
+                    widths.W = w;
+                    break;
+            }
         }
     }
 }
