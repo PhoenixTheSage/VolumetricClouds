@@ -1,0 +1,13 @@
+<Project>
+  <!-- Keep real internal-access grants. Publicizer 2.3 emits an invalid empty
+       grant when there were no members to publicize (for example, a cached DLL). -->
+  <Target Name="DeclarePublicizedAccess" AfterTargets="PublicizeAssemblies" BeforeTargets="GenerateAssemblyInfo"
+          Condition="'$(_UseIactStrategy)' == 'true'">
+    <ItemGroup>
+      <AssemblyAttribute Remove="System.Runtime.CompilerServices.IgnoresAccessChecksToAttribute" />
+      <AssemblyAttribute Include="System.Runtime.CompilerServices.IgnoresAccessChecksToAttribute" Condition="'@(Publicize)' != ''">
+        <_Parameter1>%(Publicize.Identity)</_Parameter1>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>

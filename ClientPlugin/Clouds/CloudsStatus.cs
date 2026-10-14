@@ -18,6 +18,7 @@ public static class CloudsStatus
         get
         {
             var sb = new StringBuilder();
+            sb.AppendLine(PluginStatusPage.RendererLine);
             AppendConfig(sb);
             sb.AppendLine();
             AppendPlanet(sb);

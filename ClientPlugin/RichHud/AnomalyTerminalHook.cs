@@ -44,9 +44,6 @@ internal static class AnomalyTerminalHook
             var funnel = RequestNested("Funnel", FolderTitle, "Volume Studio");
             if (funnel != null)
                 PopulateStudioFunnel(funnel);
-            var status = RequestFolder(StatusPage, FolderTitle);
-            if (status != null)
-                PopulateStatus(status);
             installed = true;
             MyLog.Default.WriteLine($"{Plugin.Name}: Rich HUD pages under Anomaly Shaders / {FolderTitle}");
             return true;
@@ -55,21 +52,10 @@ internal static class AnomalyTerminalHook
 
     public static void TryRefresh()
     {
-        object page;
-        Type t;
-        lock (Gate)
-        {
-            page = pageInstance;
-            t = pageType;
-        }
-
-        if (page == null || t == null)
-            return;
-
         var line = CloudsStatus.HudOverlayLine ?? "No planet in range yet";
         if (line == lastHud)
             return;
-        Invoke(t, page, "Refresh");
+        PluginStatusPage.Refresh();
         lastHud = line;
     }
 
@@ -226,8 +212,6 @@ internal static class AnomalyTerminalHook
 
         Invoke(t, page, "Category", "Height",
             "Min/Max are clamps only. Height comes from the weather column.");
-        Invoke(t, page, "Label", "Column",
-            (Func<string>)(() => CloudsStatus.HudOverlayLine ?? "No planet in range yet"));
         Invoke(t, page, "Slider", "Min height", 0f, 5f,
             (Func<float>)(() => Config.Current.BaseAltitude),
             (Action<float>)(v => Set(() => Config.Current.BaseAltitude = v)),
@@ -265,14 +249,6 @@ internal static class AnomalyTerminalHook
             (Action<float>)(v => Set(() => Config.Current.HorizonRange = v)),
             "Max view distance in atmosphere radii. Does not change Min/Max or Atmosphere fit", 0.1f);
 
-        Invoke(t, page, "Category", "Debug");
-        Invoke(t, page, "Dropdown", "View", typeof(CloudDebugView),
-            (Func<object>)(() => Config.Current.DebugView),
-            (Action<object>)(v => Set(() => Config.Current.DebugView = (CloudDebugView)v)),
-            "False-color IsolatedMix. Weather / density / march. Off = shaded clouds.");
-        Invoke(t, page, "Button", "Show Status",
-            (Action)CloudsStatus.Show,
-            "Shell radii, packed VolumeHdr, textures, Anomaly program/catalog. Prefer over the HUD overlay.");
     }
 
     static void Slider(object page, string name, float min, float max, float step, Func<float> get, Action<float> set, string tip)
@@ -419,17 +395,15 @@ internal static class AnomalyTerminalHook
         Slider(page, "Subvortex Z", -400f, 400f, 5f, () => Config.Current.StudioFunnelSubZ, v => Config.Current.StudioFunnelSubZ = v, "Metres, in the spinning frame.");
     }
 
-    static void PopulateStatus(object page)
+    internal static void PopulateStatus(object page)
     {
         var t = page.GetType();
         Invoke(t, page, "Category", "Debug");
+        Invoke(t, page, "Label", "Column", (Func<string>)(() => CloudsStatus.HudOverlayLine ?? "No planet in range yet"));
         Invoke(t, page, "Dropdown", "View", typeof(CloudDebugView),
             (Func<object>)(() => Config.Current.DebugView),
             (Action<object>)(v => Set(() => Config.Current.DebugView = (CloudDebugView)v)),
             "False-color IsolatedMix. Weather / density / march. Off = shaded clouds.");
-        Invoke(t, page, "Button", "Show Status",
-            (Action)CloudsStatus.Show,
-            "Shell radii, packed VolumeHdr, textures, Anomaly program/catalog. Prefer over the HUD overlay.");
     }
 
     static void Set(Action apply)

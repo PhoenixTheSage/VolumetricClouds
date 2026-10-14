@@ -12,8 +12,8 @@ using VRage.Plugins;
 using VRage.Utils;
 
 #if !LOCAL_BUILD
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.2.1.0")]
+[assembly: AssemblyFileVersion("1.2.1.0")]
 #endif
 
 namespace ClientPlugin;
@@ -88,6 +88,7 @@ public class Plugin : IPlugin
 
     public void Update()
     {
+        PluginStatusPage.TryInstall("Volumetric Clouds", Config.ShowStatus, RichHud.AnomalyTerminalHook.PopulateStatus);
         AnomalyRenderer.Observe();
         ApplyDeviceRoute();
         AnomalyTerminalHook.TryInstall();
