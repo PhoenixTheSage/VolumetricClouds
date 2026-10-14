@@ -3,16 +3,111 @@
   "name": "Volumetric Clouds",
   "passes": [
     {
-      "id": "volumetric.clouds.volume",
+      "id": "volumetric.clouds.shadow",
       "slot": "AfterAtmosphere",
-      "file": "Fullscreen/AfterAtmosphere/VolumetricClouds.hlsl",
-      "compose": "IsolatedMix",
+      "file": "Fullscreen/AfterAtmosphere/CloudSunShadowStamp.hlsl",
+      "compose": "PublishOnly",
+      "output": "volumeSunShadow",
+      "priority": 0,
       "scale": 0.5,
       "temporal": ["InColor"],
       "binds": [
         { "catalog": "clouds.shape", "slot": 7 },
         { "catalog": "clouds.detail", "slot": 8 },
         { "catalog": "clouds.weather", "slot": 9 }
+      ]
+    },
+    {
+      "id": "volumetric.clouds.occlude",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/CloudSunShadowSub.hlsl",
+      "compose": "IsolatedSub",
+      "priority": 10,
+      "temporal": ["InColor"],
+      "binds": [
+        { "catalog": "volumeSunShadow", "slot": 7 }
+      ]
+    },
+    {
+      "id": "volumetric.clouds.volume",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/VolumetricClouds.hlsl",
+      "compose": "PublishOnly",
+      "priority": 20,
+      "scale": 1,
+      "temporal": ["InColor"],
+      "binds": [
+        { "catalog": "clouds.shape", "slot": 7 },
+        { "catalog": "clouds.detail", "slot": 8 },
+        { "catalog": "clouds.weather", "slot": 9 },
+        { "catalog": "clouds.storms", "slot": 12 }
+      ]
+    },
+    {
+      "id": "volumetric.clouds.volume.resolve",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/CloudVolumeResolve.hlsl",
+      "compose": "IsolatedMix",
+      "priority": 21,
+      "scale": 1,
+      "temporal": ["InColor"],
+      "history": "clouds.volumeHistory",
+      "binds": [
+        { "catalog": "pass.volumetric.clouds.volume", "slot": 7 },
+        { "catalog": "clouds.volumeHistory", "slot": 12 }
+      ]
+    },
+    {
+      "id": "volumetric.clouds.studio",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/CloudVolumeStudio.hlsl",
+      "compose": "PublishOnly",
+      "priority": 1,
+      "scale": 1,
+      "temporal": ["InColor"],
+      "binds": [
+        { "catalog": "clouds.shape", "slot": 7 },
+        { "catalog": "clouds.detail", "slot": 8 }
+      ]
+    },
+    {
+      "id": "volumetric.clouds.studio.resolve",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/CloudStudioResolve.hlsl",
+      "compose": "PublishOnly",
+      "priority": 2,
+      "scale": 1,
+      "temporal": ["InColor"],
+      "history": "clouds.studioHistory",
+      "binds": [
+        { "catalog": "pass.volumetric.clouds.studio", "slot": 7 },
+        { "catalog": "clouds.studioHistory", "slot": 12 }
+      ]
+    },
+    {
+      "id": "volumetric.clouds.studio.present",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/CloudStudioPresent.hlsl",
+      "compose": "Replace",
+      "priority": 3,
+      "scale": 1,
+      "temporal": ["InColor"],
+      "binds": [
+        { "catalog": "pass.volumetric.clouds.studio.resolve", "slot": 7 }
+      ]
+    },
+    {
+      "id": "volumetric.clouds.studio.world",
+      "slot": "AfterAtmosphere",
+      "file": "Fullscreen/AfterAtmosphere/CloudStudioWorld.hlsl",
+      "compose": "IsolatedMix",
+      "priority": 30,
+      "scale": 1,
+      "temporal": ["InColor"],
+      "binds": [
+        { "catalog": "clouds.shape", "slot": 7 },
+        { "catalog": "clouds.detail", "slot": 8 },
+        { "catalog": "clouds.studioVolumes", "slot": 12 }
       ]
     }
   ]

@@ -17,6 +17,8 @@ For support please join the Pulsar Discord: https://discord.gg/z8ZczP2YZY
         <Id>A9C29274-E447-49EE-881B-C980E6D190FD</Id>
     </DependencyIds>
 
+    <Platforms>Windows,Linux</Platforms>
+
     <SourceDirectories>
         <Directory>ClientPlugin</Directory>
     </SourceDirectories>

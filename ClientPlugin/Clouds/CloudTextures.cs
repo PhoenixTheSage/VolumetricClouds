@@ -1,148 +1,210 @@
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
-using SharpDX;
-using SharpDX.Direct3D11;
-using SharpDX.DXGI;
-using VRage.Render11.Resources;
+using System.Threading.Tasks;
 using VRage.Utils;
 using VRageMath;
-using VRageRender;
 
 namespace ClientPlugin.Clouds;
 
-interface ICloudSrv : ISrvBindable
+public interface ICloudSrv
 {
-    new SharpDX.Direct3D11.Resource Resource { get; }
+    string Name { get; }
+    int Width { get; }
+    int Height { get; }
+    int Depth { get; }
+    byte[] Rgba { get; }
+    byte[][] Mips { get; }
+    float[] Structured { get; }
+    int Stride { get; }
 }
 
-/// <summary>Plugin-owned immutable 2D texture for the weather map.</summary>
-sealed class CloudTexture2D : ICloudSrv, IDisposable
+/// <summary>Eight storm records, four float4s each. Pack slot t12.</summary>
+sealed class CloudStormBuffer : ICloudSrv, IDisposable
 {
-    readonly Texture2D texture;
-    readonly ShaderResourceView srv;
-    readonly Vector2I size;
+    float[] values = Array.Empty<float>();
 
     public string Name { get; }
-    public SharpDX.Direct3D11.Resource Resource => texture;
-    public ShaderResourceView Srv => srv;
-    public Vector2I Size => size;
-    public Vector3I Size3 => new Vector3I(size.X, size.Y, 1);
+    public int Width => values.Length;
+    public int Height => 1;
+    public int Depth => 1;
+    public byte[] Rgba => null;
+    public byte[][] Mips => null;
+    public float[] Structured => values;
+    public int Stride => 16;
+    public Vector3I Size3 => new Vector3I(32, 1, 1);
 
-    public CloudTexture2D(string name, int width, int height, byte[] rgbaPixels)
+    public CloudStormBuffer(string name) => Name = name;
+
+    public void Update(float[] data)
     {
-        Name = name;
-        size = new Vector2I(width, height);
-        var desc = new Texture2DDescription
-        {
-            Width = width,
-            Height = height,
-            MipLevels = 1,
-            ArraySize = 1,
-            Format = Format.R8G8B8A8_UNorm,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = ResourceUsage.Immutable,
-            BindFlags = BindFlags.ShaderResource,
-        };
-        var handle = GCHandle.Alloc(rgbaPixels, GCHandleType.Pinned);
-        try
-        {
-            var data = new DataRectangle(handle.AddrOfPinnedObject(), width * 4);
-            texture = new Texture2D(MyRender11.DeviceInstance, desc, new[] { data });
-        }
-        finally
-        {
-            handle.Free();
-        }
-
-        texture.DebugName = name;
-        srv = new ShaderResourceView(MyRender11.DeviceInstance, texture);
+        if (data == null || data.Length < 128)
+            return;
+        values = (float[])data.Clone();
     }
 
-    public void Dispose()
-    {
-        srv.Dispose();
-        texture.Dispose();
-    }
+    public void Dispose() => values = Array.Empty<float>();
 }
 
 /// <summary>Plugin-owned immutable 3D noise volume.</summary>
 sealed class CloudTexture3D : ICloudSrv, IDisposable
 {
-    readonly Texture3D texture;
-    readonly ShaderResourceView srv;
     readonly Vector3I size3;
+    readonly int mipLevels;
+    byte[] rgba;
+    byte[][] mips;
 
     public string Name { get; }
-    public SharpDX.Direct3D11.Resource Resource => texture;
-    public ShaderResourceView Srv => srv;
-    public Vector2I Size => new Vector2I(size3.X, size3.Y);
+    public bool CanUpdate { get; }
+    public int Width => size3.X;
+    public int Height => size3.Y;
+    public int Depth => size3.Z;
+    public byte[] Rgba => rgba;
+    public byte[][] Mips => mips;
+    public float[] Structured => null;
+    public int Stride => 0;
     public Vector3I Size3 => size3;
+    public int MipLevels => mipLevels;
 
-    public CloudTexture3D(string name, int width, int height, int depth, byte[] rgbaPixels)
+    public CloudTexture3D(string name, int width, int height, int depth, byte[] rgbaPixels, bool updatable = false)
     {
         Name = name;
+        CanUpdate = updatable;
         size3 = new Vector3I(width, height, depth);
-        var desc = new Texture3DDescription
-        {
-            Width = width,
-            Height = height,
-            Depth = depth,
-            MipLevels = 1,
-            Format = Format.R8G8B8A8_UNorm,
-            Usage = ResourceUsage.Immutable,
-            BindFlags = BindFlags.ShaderResource,
-        };
-        var handle = GCHandle.Alloc(rgbaPixels, GCHandleType.Pinned);
-        try
-        {
-            var box = new DataBox(handle.AddrOfPinnedObject(), width * 4, width * height * 4);
-            texture = new Texture3D(MyRender11.DeviceInstance, desc, new[] { box });
-        }
-        finally
-        {
-            handle.Free();
-        }
+        mipLevels = 1;
+        rgba = rgbaPixels;
+        mips = rgbaPixels == null ? null : new[] { rgbaPixels };
+    }
 
-        texture.DebugName = name;
-        srv = new ShaderResourceView(MyRender11.DeviceInstance, texture);
+    /// <summary>Replaces the weather image. The catalog publish copies these bytes.</summary>
+    public void UpdateRgba(byte[] rgbaPixels)
+    {
+        if (!CanUpdate || rgbaPixels == null)
+            return;
+        rgba = rgbaPixels;
+        mips = new[] { rgbaPixels };
+    }
+
+    /// <summary>RGBA volume with CPU box-filter mips (weather LOD).</summary>
+    public CloudTexture3D(string name, int dim, byte[] rgbaPixels, int mipCount)
+    {
+        Name = name;
+        size3 = new Vector3I(dim, dim, dim);
+        mips = BuildBoxMips(rgbaPixels, dim, mipCount);
+        mipLevels = mips.Length;
+        rgba = mips.Length > 0 ? mips[0] : null;
+    }
+
+    static byte[][] BuildBoxMips(byte[] top, int dim, int mipCount)
+    {
+        mipCount = Math.Max(mipCount, 1);
+        var mips = new byte[mipCount][];
+        mips[0] = top;
+        int size = dim;
+        for (int i = 1; i < mipCount; i++)
+        {
+            mips[i] = BoxFilter3D(mips[i - 1], size);
+            size /= 2;
+        }
+        return mips;
+    }
+
+    static byte[] BoxFilter3D(byte[] src, int dim)
+    {
+        int half = Math.Max(dim / 2, 1);
+        var dst = new byte[half * half * half * 4];
+        for (int z = 0; z < half; z++)
+        for (int y = 0; y < half; y++)
+        for (int x = 0; x < half; x++)
+        {
+            int r = 0, g = 0, b = 0, a = 0;
+            for (int dz = 0; dz < 2; dz++)
+            for (int dy = 0; dy < 2; dy++)
+            for (int dx = 0; dx < 2; dx++)
+            {
+                int sx = (x * 2 + dx) & (dim - 1);
+                int sy = (y * 2 + dy) & (dim - 1);
+                int sz = (z * 2 + dz) & (dim - 1);
+                int i = ((sz * dim + sy) * dim + sx) * 4;
+                r += src[i];
+                g += src[i + 1];
+                b += src[i + 2];
+                a += src[i + 3];
+            }
+            int o = ((z * half + y) * half + x) * 4;
+            dst[o] = (byte)(r >> 3);
+            dst[o + 1] = (byte)(g >> 3);
+            dst[o + 2] = (byte)(b >> 3);
+            dst[o + 3] = (byte)(a >> 3);
+        }
+        return dst;
     }
 
     public void Dispose()
     {
-        srv.Dispose();
-        texture.Dispose();
+        rgba = null;
+        mips = null;
     }
 }
 
 /// <summary>
-/// Owns AutoPBR shape/detail volumes and a seeded weather map.
-/// Recreated after device reset via Anomaly <c>RegisterLifetime</c>.
+/// Owns AutoPBR shape/detail volumes and a 2D weather coverage map
+/// (Texture3D W×H×1 — catalog has no Texture2D). Recreated after device
+/// reset via Anomaly <c>RegisterLifetime</c>.
 /// </summary>
 public static class CloudTextures
 {
     const int ShapeSize = 128;
     const int DetailSize = 64;
-    const int WeatherSize = 64;
-    const int WeatherRev = 9;
-    const string ShapeFile = "cloud_noise_shape_128_v2.bin";
-    const string DetailFile = "cloud_noise_detail_64_v2.bin";
+    public const int WeatherSize = 64;
+    // HZD / Evolved 128³ wrap. Bake Worley-4 → puff diameter ≈ period/4 ≈ 1 km.
+    public const float EvolvedShapePeriodMetres = 4000f;
+    // Cubed GetUprezzed: inSamplePosition * 0.01.
+    public const float CubedUprezPeriodMetres = 100f;
+    const string ShapeFile = "cloud_noise_shape_128_v5.bin";
+    const string DetailFile = "cloud_noise_detail_64_v5.bin";
 
     static readonly object CreateLock = new();
+    static readonly byte[] UploadScratch = new byte[CloudClimate.VolumeBytes];
     static string packRoot;
     static CloudTexture3D shape;
     static CloudTexture3D detail;
     static CloudTexture3D weather;
+    static CloudStormBuffer storms;
+    static readonly float[] stormUpload = new float[128];
+    static float boltAge = 1f;
+    static float boltCooldown;
+    static float boltSeed = 1f;
+    static int boltStorm = -1;
     static int weatherSeed = int.MinValue;
+    static byte[] weatherCpuPixels;
+    static bool loggedUploadFail;
 
     internal static CloudTexture3D Shape => shape;
     internal static CloudTexture3D Detail => detail;
-    internal static ISrvBindable Weather => weather;
+    internal static CloudTexture3D Weather => weather;
+    internal static CloudStormBuffer Storms => storms;
 
-    public static void SetPackRoot(string root)
+    public static string StatusLine()
     {
-        packRoot = root;
+        lock (CreateLock)
+        {
+            string Dim3(CloudTexture3D tex) =>
+                tex == null ? "missing" : $"{tex.Size3.X}³/{tex.MipLevels}mip";
+            string weatherState = weather != null
+                ? $"{weather.Size3.X}×{weather.Size3.Y}×{weather.Size3.Z} live · {CloudClimate.MoistureLine}"
+                : weatherCpuPixels != null
+                    ? "upload pending"
+                    : "missing";
+            string sim = CloudClimate.Running
+                ? $" · sim {CloudClimate.Steps} steps"
+                : " · sim idle";
+            return
+                $"shape {Dim3(shape)} · detail {Dim3(detail)} · weather {weatherState}{sim} · noise v5" +
+                (string.IsNullOrEmpty(packRoot) ? " · packRoot unset" : "");
+        }
     }
+
+    public static void SetPackRoot(string root) => packRoot = root;
 
     public static void Invalidate()
     {
@@ -151,34 +213,242 @@ public static class CloudTextures
             shape?.Dispose();
             detail?.Dispose();
             weather?.Dispose();
+            storms?.Dispose();
             shape = null;
             detail = null;
             weather = null;
+            storms = null;
             weatherSeed = int.MinValue;
+            weatherCpuPixels = null;
+        }
+
+        CloudClimate.Reset();
+    }
+
+    public static bool WeatherReady(int planetSeed)
+    {
+        lock (CreateLock)
+            return weather != null && weatherSeed == planetSeed && CloudClimate.Running;
+    }
+
+    /// <summary>
+    /// Game thread. Caches elevation and spin axis, and seeds the live field
+    /// when the planet changes. Does not write the grid to disk.
+    /// </summary>
+    public static void SetClimate(int planetSeed, float declinationRad, float spacing, float[] heightAboveSea, float hillAmplitude, VRageMath.Vector3 axis, float hillColumn = 0.5f, float[] waterIce = null, float[] coldIce = null, float seaMetres = 0f)
+    {
+        var spin = axis.LengthSquared() > 1e-6f ? VRageMath.Vector3.Normalize(axis) : VRageMath.Vector3.Up;
+        CloudClimate.Bind(planetSeed, declinationRad, spacing, heightAboveSea, hillAmplitude, spin, hillColumn, waterIce, coldIce, seaMetres);
+        lock (CreateLock)
+            weatherCpuPixels = CloudClimate.CopyPixels();
+    }
+
+    /// <summary>Game thread. Advances the moisture field about four times a second.</summary>
+    public static void StepClimate()
+    {
+        float dt = 1f / 60f;
+        try
+        {
+            dt = (float)AnomalyScene.FrameSeconds();
+        }
+        catch
+        {
+            // Environment clock is not up yet. Step with a nominal frame.
+        }
+
+        if (!CloudClimate.Step(dt))
+            return;
+        lock (CreateLock)
+            weatherCpuPixels = CloudClimate.CopyPixels();
+    }
+
+    /// <summary>GPU weather image is up. The field itself keeps stepping.</summary>
+    public static bool HasWeather
+    {
+        get
+        {
+            lock (CreateLock)
+                return weather != null;
         }
     }
 
-    public static void EnsureCreated(int planetSeed)
+    /// <summary>Session load. The sim is already seeded by <see cref="SetClimate"/>.</summary>
+    public static void PrepareWeather(int planetSeed)
     {
-        if (shape != null && detail != null && weather != null && weatherSeed == (planetSeed ^ WeatherRev))
+        if (CloudClimate.PlanetSeed != planetSeed)
+            return;
+        lock (CreateLock)
+        {
+            if (weatherCpuPixels == null)
+                weatherCpuPixels = CloudClimate.CopyPixels();
+        }
+    }
+
+    /// <summary>Game thread. Does not bake or write a weather file.</summary>
+    public static void RequestWeather(int planetSeed) => PrepareWeather(planetSeed);
+
+    /// <summary>Render thread. Shape and detail only. The studio does not need a planet.</summary>
+    public static bool EnsureNoise()
+    {
+        lock (CreateLock)
+        {
+            if (shape == null)
+                shape = LoadOrGenerateVolume("CloudsShape", ShapeFile, ShapeSize, 8, out _);
+            if (detail == null)
+                detail = LoadOrGenerateVolume("CloudsDetail", DetailFile, DetailSize, 7, out _);
+            return shape != null && detail != null;
+        }
+    }
+
+    /// <summary>Render thread: shape/detail from disk, weather image created once.</summary>
+    public static void EnsureCreated(int planetSeed, string weatherTexture = null)
+    {
+        if (shape != null && detail != null && weather != null && storms != null && weather.CanUpdate
+            && weather.Size3.Z == 2 && weatherSeed == planetSeed)
             return;
 
         lock (CreateLock)
         {
             if (shape == null)
-                shape = LoadOrGenerateVolume("CloudsShape", ShapeFile, ShapeSize);
+                shape = LoadOrGenerateVolume("CloudsShape", ShapeFile, ShapeSize, 8, out _);
             if (detail == null)
-                detail = LoadOrGenerateVolume("CloudsDetail", DetailFile, DetailSize);
-            if (weather == null || weatherSeed != (planetSeed ^ WeatherRev))
+                detail = LoadOrGenerateVolume("CloudsDetail", DetailFile, DetailSize, 7, out _);
+            if (storms == null)
+                storms = new CloudStormBuffer("CloudsStorms");
+            if (weather != null && weather.CanUpdate && weather.Size3.Z == 2 && weatherSeed == planetSeed)
+                return;
+
+            if (!CloudClimate.CopyVolume(UploadScratch, false))
+                return;
+            if (weather != null && weather.CanUpdate && weather.Size3.Z == 2)
             {
-                weather?.Dispose();
-                weather = CreateWeather(planetSeed);
-                weatherSeed = planetSeed ^ WeatherRev;
+                weather.UpdateRgba(UploadScratch);
+                weatherSeed = planetSeed;
+                StoreCpuSlice();
+                CloudClimate.ClearDirty();
+                return;
+            }
+
+            weather?.Dispose();
+            // Slice 0 is the live map. Slice 1 is the surface fraction.
+            weather = new CloudTexture3D("CloudsWeather", WeatherSize, WeatherSize, 2, UploadScratch, updatable: true);
+            weatherSeed = planetSeed;
+            StoreCpuSlice();
+            CloudClimate.ClearDirty();
+        }
+    }
+
+    static void StoreCpuSlice()
+    {
+        if (weatherCpuPixels == null || weatherCpuPixels.Length != WeatherSize * WeatherSize * 4)
+            weatherCpuPixels = new byte[WeatherSize * WeatherSize * 4];
+        System.Buffer.BlockCopy(UploadScratch, 0, weatherCpuPixels, 0, weatherCpuPixels.Length);
+    }
+
+    static void StampBolt()
+    {
+        float dt = 1f / 60f;
+        try
+        {
+            dt = (float)AnomalyScene.FrameSeconds();
+        }
+        catch
+        {
+            // Render clock is not up yet.
+        }
+
+        if (dt < 0f || dt > 0.5f)
+            dt = 1f / 60f;
+        boltAge += dt;
+        boltCooldown -= dt;
+        if (boltAge > 0.15f)
+            boltStorm = -1;
+        if (boltStorm < 0 && boltCooldown <= 0f)
+        {
+            int best = -1;
+            float bestD = 2000f;
+            for (int i = 0; i < 8; i++)
+            {
+                int o = i * 16;
+                if (stormUpload[o + 3] < 0.5f)
+                    continue;
+                float x = stormUpload[o];
+                float y = stormUpload[o + 1];
+                float z = stormUpload[o + 2];
+                float d = (float)Math.Sqrt(x * x + y * y + z * z);
+                if (d < bestD)
+                {
+                    bestD = d;
+                    best = i;
+                }
+            }
+
+            if (best >= 0)
+            {
+                boltStorm = best;
+                boltAge = 0f;
+                boltSeed += 17.13f;
+                boltCooldown = 1f;
+            }
+        }
+
+        if (boltStorm < 0)
+            return;
+        int at = boltStorm * 16;
+        stormUpload[at + 12] = boltAge;
+        stormUpload[at + 13] = boltSeed;
+    }
+
+    /// <summary>Render thread. Camera-relative storm records for t12.</summary>
+    public static void UploadStorms(VRageMath.Vector3 centerRel)
+    {
+        CloudClimate.WriteCameraStorms(centerRel, stormUpload);
+        StampBolt();
+        lock (CreateLock)
+        {
+            if (storms == null)
+                return;
+            try
+            {
+                storms.Update(stormUpload);
+            }
+            catch (Exception e)
+            {
+                if (loggedUploadFail)
+                    return;
+                loggedUploadFail = true;
+                MyLog.Default.Warning($"{Plugin.Name}: storm upload failed: {e.Message}");
             }
         }
     }
 
-    static CloudTexture3D LoadOrGenerateVolume(string name, string fileName, int dim)
+    /// <summary>Render thread. Uploads the latest sim image. No disk write.</summary>
+    public static void UploadLiveWeather()
+    {
+        if (!CloudClimate.CopyVolume(UploadScratch, true))
+            return;
+
+        lock (CreateLock)
+        {
+            StoreCpuSlice();
+            if (weather == null || !weather.CanUpdate)
+                return;
+            try
+            {
+                weather.UpdateRgba(UploadScratch);
+            }
+            catch (Exception e)
+            {
+                if (loggedUploadFail)
+                    return;
+                loggedUploadFail = true;
+                MyLog.Default.Warning($"{Plugin.Name}: weather upload failed: {e.Message}");
+            }
+        }
+    }
+
+    static CloudTexture3D LoadOrGenerateVolume(
+        string name, string fileName, int dim, int mipCount, out byte[] cpu)
     {
         var expected = dim * dim * dim * 4;
         if (!string.IsNullOrEmpty(packRoot))
@@ -188,81 +458,104 @@ public static class CloudTextures
             {
                 var bytes = File.ReadAllBytes(path);
                 if (bytes.Length == expected)
-                    return new CloudTexture3D(name, dim, dim, dim, bytes);
+                {
+                    cpu = bytes;
+                    return new CloudTexture3D(name, dim, bytes, mipCount);
+                }
                 MyLog.Default.Warning($"{Plugin.Name}: {fileName} length {bytes.Length}, expected {expected}");
             }
             else
-            {
                 MyLog.Default.Warning($"{Plugin.Name}: missing {path}, generating fallback noise");
-            }
         }
 
-        return new CloudTexture3D(name, dim, dim, dim, GenerateVolume(dim, name.GetHashCode()));
+        cpu = GenerateVolume(dim, name.GetHashCode());
+        return new CloudTexture3D(name, dim, cpu, mipCount);
     }
 
     static byte[] GenerateVolume(int dim, int seed)
     {
         var pixels = new byte[dim * dim * dim * 4];
-        for (int z = 0; z < dim; z++)
-        for (int y = 0; y < dim; y++)
-        for (int x = 0; x < dim; x++)
+        Parallel.For(0, dim, z =>
         {
-            int i = ((z * dim + y) * dim + x) * 4;
-            pixels[i] = HashByte(x, y, z, seed);
-            pixels[i + 1] = HashByte(x + 17, y + 9, z + 3, seed + 11);
-            pixels[i + 2] = HashByte(x + 5, y + 23, z + 13, seed + 29);
-            pixels[i + 3] = HashByte(x + 31, y + 7, z + 19, seed + 47);
-        }
-
+            for (int y = 0; y < dim; y++)
+            for (int x = 0; x < dim; x++)
+            {
+                float u = x / (float)dim;
+                float v = y / (float)dim;
+                float w = z / (float)dim;
+                int i = ((z * dim + y) * dim + x) * 4;
+                pixels[i] = ToByte(FbmWrap3(u * 4f, v * 4f, w * 4f, seed, 4f));
+                pixels[i + 1] = ToByte(FbmWrap3(u * 8f + 0.3f, v * 8f, w * 8f, seed + 11, 8f));
+                pixels[i + 2] = ToByte(FbmWrap3(u * 16f, v * 16f + 0.5f, w * 16f, seed + 29, 16f));
+                pixels[i + 3] = ToByte(FbmWrap3(u * 32f, v * 32f, w * 32f + 0.7f, seed + 47, 32f));
+            }
+        });
         return pixels;
     }
 
-    static CloudTexture3D CreateWeather(int seed)
+    /// <summary>Bilinear wrap sample of the CPU 2D weather map. Worker-safe.</summary>
+    public static bool TrySampleWeather(float u, float v, out Vector4 rgba)
     {
-        var dim = WeatherSize;
-        var pixels = new byte[dim * dim * dim * 4];
-        // Wrapping 3D FBM: continuous on a spherical shell. 2D lat/lon
-        // pinched at poles; 2D triplanar cut great-circle cube faces.
-        for (int z = 0; z < dim; z++)
-        for (int y = 0; y < dim; y++)
-        for (int x = 0; x < dim; x++)
+        byte[] pixels;
+        lock (CreateLock)
+            pixels = weatherCpuPixels;
+        if (pixels == null || pixels.Length < WeatherSize * WeatherSize * 4)
         {
-            float u = x / (float)dim;
-            float v = y / (float)dim;
-            float w = z / (float)dim;
-            float large = FbmWrap3(u * 6f, v * 6f, w * 6f, seed, 6f);
-            float medium = FbmWrap3(u * 14f + 2.1f, v * 14f + 1.3f, w * 14f + 0.7f, seed + 19, 14f);
-            float fine = FbmWrap3(u * 28f + 5.7f, v * 28f + 3.4f, w * 28f + 1.9f, seed + 71, 28f);
-            float n = large * 0.65f + medium * 0.35f;
-            float coverage = Smooth01((n - 0.32f) / 0.38f);
-            coverage = MathHelper.Clamp(coverage + (fine - 0.5f) * 0.22f, 0f, 1f);
-
-            float type = FbmWrap3(u * 3.4f + 1.1f, v * 3.4f + 0.6f, w * 3.4f + 0.4f, seed + 131, 3.4f);
-            type = Smooth01((type - 0.22f) / 0.55f);
-            float potential = FbmWrap3(u * 9f + 8.2f, v * 9f + 4.7f, w * 9f + 2.3f, seed + 173, 9f);
-            float convection = Smooth01(
-                (FbmWrap3(u * 5f + 3.3f, v * 5f + 1.8f, w * 5f + 0.9f, seed + 251, 5f) - 0.42f) / 0.38f);
-            convection *= Smooth01((coverage - 0.35f) / 0.25f);
-
-            int i = ((z * dim + y) * dim + x) * 4;
-            pixels[i] = ToByte(coverage);
-            pixels[i + 1] = ToByte(type);
-            pixels[i + 2] = ToByte(potential);
-            pixels[i + 3] = ToByte(convection);
+            rgba = Vector4.Zero;
+            return false;
         }
 
-        return new CloudTexture3D("CloudsWeather", dim, dim, dim, pixels);
+        rgba = SampleWeatherPixels(pixels, u, v);
+        return true;
     }
 
-    static float Smooth01(float t) => MathHelper.SmoothStep(0f, 1f, MathHelper.Clamp(t, 0f, 1f));
+    internal static byte[] CopyCpuWeather()
+    {
+        lock (CreateLock)
+        {
+            if (weatherCpuPixels == null)
+                return null;
+            return (byte[])weatherCpuPixels.Clone();
+        }
+    }
 
-    static float FbmWrap3(float x, float y, float z, int seed, float period)
+    internal static Vector4 SampleWeatherPixels(byte[] pixels, float u, float v)
+    {
+        u = u - (float)Math.Floor(u);
+        v = v - (float)Math.Floor(v);
+        if (u < 0f) u += 1f;
+        if (v < 0f) v += 1f;
+        float x = u * WeatherSize;
+        float y = v * WeatherSize;
+        int x0 = (int)Math.Floor(x);
+        int y0 = (int)Math.Floor(y);
+        float tx = x - x0;
+        float ty = y - y0;
+        int x1 = ((x0 + 1) % WeatherSize + WeatherSize) % WeatherSize;
+        int y1 = ((y0 + 1) % WeatherSize + WeatherSize) % WeatherSize;
+        x0 = ((x0 % WeatherSize) + WeatherSize) % WeatherSize;
+        y0 = ((y0 % WeatherSize) + WeatherSize) % WeatherSize;
+        Vector4 a = WeatherTexel(pixels, x0, y0);
+        Vector4 b = WeatherTexel(pixels, x1, y0);
+        Vector4 c = WeatherTexel(pixels, x0, y1);
+        Vector4 d = WeatherTexel(pixels, x1, y1);
+        return Vector4.Lerp(Vector4.Lerp(a, b, tx), Vector4.Lerp(c, d, tx), ty);
+    }
+
+    static Vector4 WeatherTexel(byte[] pixels, int x, int y)
+    {
+        int i = (y * WeatherSize + x) * 4;
+        return new Vector4(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]) * (1f / 255f);
+    }
+
+    static float FbmWrap3(float x, float y, float z, int seed, float period, int octaves = 5)
     {
         float sum = 0f;
         float amp = 0.5f;
         float freq = 1f;
         float p = period;
-        for (int o = 0; o < 5; o++)
+        int n = Math.Max(octaves, 1);
+        for (int o = 0; o < n; o++)
         {
             sum += ValueNoiseWrap3(x * freq, y * freq, z * freq, seed + o * 101, p) * amp;
             freq *= 2.02f;
@@ -313,16 +606,6 @@ public static class CloudTextures
             n = (n ^ (n >> 13)) * 1274126177;
             n ^= n >> 16;
             return (n & 0x7fffffff) / 2147483647f;
-        }
-    }
-
-    static byte HashByte(int x, int y, int z, int seed)
-    {
-        unchecked
-        {
-            int n = x * 374761393 + y * 668265263 + z * 1274126177 + seed;
-            n = (n ^ (n >> 13)) * 1274126177;
-            return (byte)(n & 255);
         }
     }
 

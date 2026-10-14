@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <Bin64 Condition="'$(Bin64)' == ''">T:/SteamLibrary/steamapps/common/SpaceEngineers/Bin64</Bin64>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="SharpDX">
+      <HintPath>$(Bin64)/SharpDX.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpDX.D3DCompiler">
+      <HintPath>$(Bin64)/SharpDX.D3DCompiler.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

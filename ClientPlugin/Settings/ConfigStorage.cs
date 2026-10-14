@@ -103,7 +103,10 @@ public static class ConfigStorage
 
         try
         {
-            using (var streamReader = File.OpenText(path))
+            var xml = File.ReadAllText(path);
+            xml = xml.Replace("<DebugView>OctreeVsWeather</DebugView>", "<DebugView>HeightProfile</DebugView>");
+            xml = xml.Replace("<DebugView>Octree</DebugView>", "<DebugView>HeightProfile</DebugView>");
+            using (var streamReader = new StringReader(xml))
             {
                 var loaded = (Config)Serializer.Deserialize(streamReader) ?? Config.Default;
                 MigrateHeight(loaded);
@@ -120,14 +123,22 @@ public static class ConfigStorage
 
     /// <summary>
     /// 0.55 was a short-lived default that buried Pertam's entire deck under
-    /// MaximumRadius (~30.8 km). New default is 1 (visual air top). Current
-    /// is not assigned yet during Load, so the property set does not flush.
+    /// MaximumRadius (~30.8 km). Do not rewrite Min 0.15–0.45 — that is a
+    /// legal sea-relative floor (Earthlike default is 0.23).
     /// </summary>
     static void MigrateHeight(Config config)
     {
         if (config == null)
             return;
         if (Math.Abs(config.MaxAltitude - 0.55f) < 0.0005f)
-            config.MaxAltitude = 1f;
+            config.MaxAltitude = 0.75f;
+        // Old pair was camera-to-center × atmosphere (7–15). That is not
+        // view range. Keep the new default unless the file already stored
+        // a short HorizonRange-scale end.
+        if (config.FadeEndFactor > 0.4f && config.FadeEndFactor <= 8f &&
+            Math.Abs(config.HorizonRange - 2.5f) < 0.0005f)
+            config.HorizonRange = Math.Max(0.5f, Math.Min(8f, config.FadeEndFactor));
+        config.TypeThickness = config.TypeThickness;
+        config.TypeShape = config.TypeShape;
     }
 }

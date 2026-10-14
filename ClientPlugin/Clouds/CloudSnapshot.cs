@@ -19,7 +19,10 @@ public sealed class CloudSnapshot
     public readonly float FadeEndDistance;
     public readonly float MinScaledAltitude;
     public readonly float MaxHillRadius;
+    public readonly float TerrainRadius;
+    public readonly float SeaRadius;
     public readonly float AtmosphereRadius;
+    public readonly float VisualCeil;
     public readonly float FadeOutRelStart;
     public readonly float FadeOutRelEnd;
     public readonly int PlanetSeed;
@@ -40,7 +43,10 @@ public sealed class CloudSnapshot
         float fadeEndDistance,
         float minScaledAltitude,
         float maxHillRadius,
+        float terrainRadius,
+        float seaRadius,
         float atmosphereRadius,
+        float visualCeil,
         float fadeOutRelStart,
         float fadeOutRelEnd,
         int planetSeed,
@@ -60,7 +66,10 @@ public sealed class CloudSnapshot
         FadeEndDistance = fadeEndDistance;
         MinScaledAltitude = minScaledAltitude;
         MaxHillRadius = maxHillRadius;
+        TerrainRadius = terrainRadius;
+        SeaRadius = seaRadius;
         AtmosphereRadius = atmosphereRadius;
+        VisualCeil = visualCeil;
         FadeOutRelStart = fadeOutRelStart;
         FadeOutRelEnd = fadeOutRelEnd;
         PlanetSeed = planetSeed;

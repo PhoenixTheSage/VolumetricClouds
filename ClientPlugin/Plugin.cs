@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using ClientPlugin.Anomaly;
@@ -12,8 +12,8 @@ using VRage.Plugins;
 using VRage.Utils;
 
 #if !LOCAL_BUILD
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 #endif
 
 namespace ClientPlugin;
@@ -24,7 +24,8 @@ public class Plugin : IPlugin
     public const string Name = "Clouds";
     public static Plugin Instance { get; private set; }
     private SettingsGenerator settingsGenerator;
-    private bool updateFailed;
+    private int climateFaults;
+    private bool deviceRouted;
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     public void Init(object gameInstance)
@@ -32,6 +33,37 @@ public class Plugin : IPlugin
         Instance = this;
         Instance.settingsGenerator = new SettingsGenerator();
         AnomalyTerminalHook.TryInstall();
+        ApplyDeviceRoute();
+    }
+
+    void ApplyDeviceRoute()
+    {
+        if (deviceRouted)
+            return;
+        if (!AnomalyRenderer.Found || !AnomalyRenderer.Decided)
+            return;
+        deviceRouted = true;
+        if (!AnomalyRenderer.AllowDx11Device)
+        {
+            if (AnomalyRenderer.AllowGuestWork)
+            {
+                try
+                {
+                    new Harmony(Name).CreateClassProcessor(typeof(Patches.SessionWeatherPreparePatch)).Patch();
+                }
+                catch (Exception e)
+                {
+                    MyLog.Default.Warning($"{Name}: session weather patch skipped: {e.Message}");
+                }
+            }
+            else
+            {
+                MyLog.Default.WriteLine(AnomalyRenderer.LinuxRequiresGuest
+                    ? $"{Name}: Linux stays idle until Anomaly's Vulkan guest bus is open"
+                    : $"{Name}: Keen cloud skip stays off ({AnomalyRenderer.ActiveName})");
+            }
+            return;
+        }
 
         try
         {
@@ -48,26 +80,53 @@ public class Plugin : IPlugin
     {
         ConfigStorage.FlushPending(true);
         CloudRenderer.Publish(null);
+        CloudHistory.Release();
+        SharedMediumAdapter.Dispose();
         CloudSampler.OnSessionUnloading();
         Instance = null;
     }
 
     public void Update()
     {
+        AnomalyRenderer.Observe();
+        ApplyDeviceRoute();
         AnomalyTerminalHook.TryInstall();
         ConfigStorage.FlushPending();
-        if (updateFailed)
+        if (AnomalyRenderer.LinuxRequiresGuest)
             return;
+        StudioPlacer.Update();
         try
         {
             CloudSampler.Update();
+            if (AnomalyRenderer.AllowGuestWork)
+                CloudRenderer.PushUniforms();
+        }
+        catch (Exception e)
+        {
+            MyLog.Default.Error($"{Name}: planet sample failed: {e.Message}");
+        }
+
+        try
+        {
+            CloudTextures.StepClimate();
+            climateFaults = 0;
+        }
+        catch (Exception e)
+        {
+            // One bad climate step must not drop the snapshot. That turned
+            // the pack off and brought Keen's cloud sphere back for the session.
+            climateFaults++;
+            if (climateFaults <= 3 || climateFaults % 240 == 0)
+                MyLog.Default.Error($"{Name}: climate step failed: {e.Message}");
+        }
+
+        try
+        {
             AnomalyTerminalHook.TryRefresh();
         }
         catch (Exception e)
         {
-            updateFailed = true;
-            CloudRenderer.Publish(null);
-            MyLog.Default.Error($"{Name}: Update failed, disabling for this session: {e}");
+            MyLog.Default.Warning($"{Name}: terminal refresh skipped: {e.Message}");
         }
     }
 

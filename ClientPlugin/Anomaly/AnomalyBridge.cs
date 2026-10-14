@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using ClientPlugin.Clouds;
-using VRage.Render11.Resources;
 using VRage.Utils;
 using VRageMath;
 
@@ -15,10 +14,21 @@ internal static class AnomalyBridge
 {
     public const string PackId = "volumetric.clouds";
     public const string PassId = "volumetric.clouds.volume";
+    public const string ShadowPassId = "volumetric.clouds.shadow";
+    public const string OccludePassId = "volumetric.clouds.occlude";
+    public const string StudioPassId = "volumetric.clouds.studio";
+    public const string StudioResolveId = "volumetric.clouds.studio.resolve";
+    public const string StudioPresentId = "volumetric.clouds.studio.present";
+    public const string StudioWorldId = "volumetric.clouds.studio.world";
+    public const string StudioVolumesName = "clouds.studioVolumes";
+    public const string VolumeResolveId = "volumetric.clouds.volume.resolve";
     public const string UniformPassId = "volumetric.clouds.uniforms";
+    static readonly string[] PassIds = { ShadowPassId, OccludePassId, PassId, VolumeResolveId };
+    static readonly string[] StudioPassIds = { StudioPassId, StudioResolveId, StudioPresentId };
     public const string ShapeName = "clouds.shape";
     public const string DetailName = "clouds.detail";
     public const string WeatherName = "clouds.weather";
+    public const string StormsName = "clouds.storms";
 
     const string PackRegistryType = "ClientPlugin.Shaders.ShaderPackRegistry";
     const string FullscreenType = "ClientPlugin.Shaders.FullscreenPassRegistry";
@@ -31,12 +41,18 @@ internal static class AnomalyBridge
     static bool registered;
     static MethodInfo setUniforms;
     static MethodInfo setEnabled;
+    static MethodInfo tryGetProgramStatus;
+    static MethodInfo catalogActive;
     static PropertyInfo hasDisplayTenant;
     static MethodInfo catalogPublish;
     static MethodInfo catalogUnpublish;
     static object shapePublished;
     static object detailPublished;
     static object weatherPublished;
+    static object stormsPublished;
+    static object studioHistoryPublished;
+    static object studioVolumesPublished;
+    static object volumeHistoryPublished;
     static MethodInfo publishedPublish;
     static MethodInfo tryGetRadii;
 
@@ -47,6 +63,16 @@ internal static class AnomalyBridge
             lock (Gate)
                 return registered;
         }
+    }
+
+    public static bool RegistryFound
+    {
+        get { lock (Gate) return setUniforms != null || registered; }
+    }
+
+    public static bool ProgramStatusAvailable
+    {
+        get { lock (Gate) return tryGetProgramStatus != null; }
     }
 
     public static string PackRoot { get; private set; }
@@ -116,7 +142,14 @@ internal static class AnomalyBridge
 
             setUniforms = fullscreen?.GetMethod("SetUniforms", BindingFlags.Public | BindingFlags.Static);
             setEnabled = fullscreen?.GetMethod("SetEnabled", BindingFlags.Public | BindingFlags.Static);
+            tryGetProgramStatus = fullscreen?.GetMethod(
+                "TryGetProgramStatus",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { typeof(string), typeof(string).MakeByRefType() },
+                null);
             hasDisplayTenant = owned?.GetProperty("HasDisplayTenant", BindingFlags.Public | BindingFlags.Static);
+            catalogActive = catalog?.GetMethod("Active", BindingFlags.Public | BindingFlags.Static);
             catalogPublish = catalog?.GetMethod("Publish", BindingFlags.Public | BindingFlags.Static);
             catalogUnpublish = catalog?.GetMethod("Unpublish", BindingFlags.Public | BindingFlags.Static);
             if (published != null)
@@ -124,7 +157,16 @@ internal static class AnomalyBridge
                 shapePublished = Activator.CreateInstance(published);
                 detailPublished = Activator.CreateInstance(published);
                 weatherPublished = Activator.CreateInstance(published);
-                publishedPublish = published.GetMethod("Publish", BindingFlags.Public | BindingFlags.Instance);
+                stormsPublished = Activator.CreateInstance(published);
+                studioHistoryPublished = Activator.CreateInstance(published);
+                studioVolumesPublished = Activator.CreateInstance(published);
+                volumeHistoryPublished = Activator.CreateInstance(published);
+                publishedPublish = published.GetMethod(
+                    "Publish",
+                    BindingFlags.Public | BindingFlags.Instance,
+                    null,
+                    new[] { typeof(object), typeof(IntPtr), typeof(int), typeof(int) },
+                    null);
             }
 
             tryGetRadii = planetAtmo?.GetMethod("TryGetRadii", BindingFlags.Public | BindingFlags.Static);
@@ -160,6 +202,7 @@ internal static class AnomalyBridge
             PublishOne(ShapeName, shapePublished, CloudTextures.Shape);
             PublishOne(DetailName, detailPublished, CloudTextures.Detail);
             PublishOne(WeatherName, weatherPublished, CloudTextures.Weather);
+            PublishOne(StormsName, stormsPublished, CloudTextures.Storms);
         }
     }
 
@@ -196,6 +239,50 @@ internal static class AnomalyBridge
         }
     }
 
+    public static bool CatalogAvailable(string name)
+    {
+        MethodInfo method;
+        lock (Gate)
+            method = catalogActive;
+        if (method == null || string.IsNullOrWhiteSpace(name))
+            return false;
+        try
+        {
+            var buf = method.Invoke(null, new object[] { name });
+            if (buf == null)
+                return false;
+            var available = buf.GetType().GetProperty("IsAvailable", BindingFlags.Public | BindingFlags.Instance);
+            return available?.GetValue(buf) is true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool TryGetProgramStatus(string programId, out string status)
+    {
+        status = null;
+        MethodInfo method;
+        lock (Gate)
+            method = tryGetProgramStatus;
+        if (method == null || string.IsNullOrWhiteSpace(programId))
+            return false;
+        try
+        {
+            var args = new object[] { programId, null };
+            if (!(method.Invoke(null, args) is true))
+                return false;
+            status = args[1] as string;
+            return !string.IsNullOrEmpty(status);
+        }
+        catch (Exception e)
+        {
+            MyLog.Default.Warning($"{Plugin.Name}: TryGetProgramStatus failed: {e.Message}");
+            return false;
+        }
+    }
+
     public static void SetUniforms(float[] values)
     {
         MethodInfo method;
@@ -203,7 +290,8 @@ internal static class AnomalyBridge
             method = setUniforms;
         try
         {
-            method?.Invoke(null, new object[] { PassId, values });
+            for (var i = 0; i < PassIds.Length; i++)
+                method?.Invoke(null, new object[] { PassIds[i], values });
         }
         catch (Exception e)
         {
@@ -212,6 +300,9 @@ internal static class AnomalyBridge
         }
     }
 
+    internal static void SetSurfaceOcclusionEnabled(bool enabled)
+    { setEnabled?.Invoke(null,new object[]{OccludePassId,enabled}); }
+
     public static void SetPassEnabled(bool enabled)
     {
         MethodInfo method;
@@ -219,7 +310,8 @@ internal static class AnomalyBridge
             method = setEnabled;
         try
         {
-            method?.Invoke(null, new object[] { PassId, enabled });
+            for (var i = 0; i < PassIds.Length; i++)
+                method?.Invoke(null, new object[] { PassIds[i], enabled });
         }
         catch (Exception e)
         {
@@ -227,21 +319,87 @@ internal static class AnomalyBridge
         }
     }
 
-    static void PublishOne(string name, object published, ISrvBindable texture)
+    public static void PublishHistory(string name, ICloudSrv texture)
     {
-        if (published == null || publishedPublish == null || catalogPublish == null || texture == null)
+        lock (Gate)
+        {
+            var published = name == CloudHistory.StudioName ? studioHistoryPublished : volumeHistoryPublished;
+            PublishOne(name, published, texture);
+        }
+    }
+
+    public static void SetStudioEnabled(bool enabled)
+    {
+        for (var i = 0; i < StudioPassIds.Length; i++)
+            InvokeEnabled(StudioPassIds[i], enabled);
+    }
+
+    public static void SetStudioWorldEnabled(bool enabled)
+    {
+        InvokeEnabled(StudioWorldId, enabled);
+    }
+
+    public static void PublishStudioVolumes(ICloudSrv texture)
+    {
+        lock (Gate)
+            PublishOne(StudioVolumesName, studioVolumesPublished, texture);
+    }
+
+    public static void SetStudioUniforms(float[] values)
+    {
+        MethodInfo method;
+        lock (Gate)
+            method = setUniforms;
+        try
+        {
+            for (var i = 0; i < StudioPassIds.Length; i++)
+                method?.Invoke(null, new object[] { StudioPassIds[i], values });
+            method?.Invoke(null, new object[] { StudioWorldId, values });
+        }
+        catch (Exception e)
+        {
+            MyLog.Default.Error($"{Plugin.Name}: studio SetUniforms failed: {e.Message}");
+            RenderTraceBind.Dump("Clouds.SetStudioUniforms", e);
+        }
+    }
+
+    static void InvokeEnabled(string id, bool enabled)
+    {
+        MethodInfo method;
+        lock (Gate)
+            method = setEnabled;
+        try
+        {
+            method?.Invoke(null, new object[] { id, enabled });
+        }
+        catch (Exception e)
+        {
+            MyLog.Default.Error($"{Plugin.Name}: SetEnabled '{id}' failed: {e.Message}");
+        }
+    }
+
+    static void PublishOne(string name, object published, ICloudSrv texture)
+    {
+        if (published == null || texture == null)
             return;
         try
         {
-            var native = texture.Resource != null ? texture.Resource.NativePointer : IntPtr.Zero;
-            publishedPublish.Invoke(published, new object[]
-            {
-                texture,
-                native,
-                texture.Size.X,
-                texture.Size.Y,
-            });
-            catalogPublish.Invoke(null, new object[] { PackId, name, published });
+            string method = texture.Structured != null ? "PublishStructuredFloats"
+                : texture.Mips != null && texture.Mips.Length > 1 ? "PublishVolumeMips"
+                : texture.Depth > 1 ? "PublishVolumeRgba8"
+                : "PublishRgba8";
+            var publish = published.GetType().GetMethod(method, BindingFlags.Public | BindingFlags.Instance);
+            if (publish == null)
+                return;
+            if (method == "PublishStructuredFloats")
+                publish.Invoke(published, new object[] { texture.Structured, texture.Stride });
+            else if (method == "PublishVolumeMips")
+                publish.Invoke(published, new object[] { texture.Mips, texture.Width });
+            else if (method == "PublishVolumeRgba8")
+                publish.Invoke(published, new object[] { texture.Rgba, texture.Width, texture.Height, texture.Depth });
+            else
+                publish.Invoke(published, new object[] { texture.Rgba, texture.Width, texture.Height });
+            catalogPublish?.Invoke(null, new object[] { PackId, name, published });
         }
         catch (Exception e)
         {
@@ -259,6 +417,8 @@ internal static class AnomalyBridge
                 catalogUnpublish?.Invoke(null, new object[] { PackId, ShapeName });
                 catalogUnpublish?.Invoke(null, new object[] { PackId, DetailName });
                 catalogUnpublish?.Invoke(null, new object[] { PackId, WeatherName });
+                catalogUnpublish?.Invoke(null, new object[] { PackId, StormsName });
+                catalogUnpublish?.Invoke(null, new object[] { PackId, StudioVolumesName });
             }
             catch
             {

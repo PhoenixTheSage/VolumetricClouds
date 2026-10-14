@@ -119,18 +119,7 @@
       <HintPath>$(Bin64Dir)Sandbox.RenderDirect.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="SharpDX, Version=4.2.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>$(Bin64Dir)SharpDX.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="SharpDX.Direct3D11, Version=4.2.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>$(Bin64Dir)SharpDX.Direct3D11.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="SharpDX.DXGI, Version=4.2.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>$(Bin64Dir)SharpDX.DXGI.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="SixLabors.Core, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
       <HintPath>$(Bin64Dir)SixLabors.Core.dll</HintPath>
       <Private>False</Private>
@@ -235,10 +224,6 @@
       <HintPath>$(Bin64Dir)VRage.Render.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="VRage.Render11, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>$(Bin64Dir)VRage.Render11.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="VRage.Scripting, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
       <HintPath>$(Bin64Dir)VRage.Scripting.dll</HintPath>
       <Private>False</Private>
@@ -274,7 +259,6 @@
 
   <ItemGroup>
     <Publicize Include="Sandbox.Game"/>
-    <Publicize Include="VRage.Render11"/>
     <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyEntities.OnEntityAdd"/>
     <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyEntities.OnEntityRemove"/>
     <DoNotPublicize Include="Sandbox.Game:Sandbox.Game.Entities.MyCubeGrid.OnStaticChanged"/>
