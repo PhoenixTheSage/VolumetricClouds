@@ -477,7 +477,7 @@ internal static class AnomalyBridge
             return null;
         foreach (var method in owned.GetMethods(BindingFlags.Public | BindingFlags.Static))
         {
-            if (method.Name != "Register" || method.IsGenericMethodDefinition)
+            if (method.Name != "RegisterPortable" || method.IsGenericMethodDefinition)
                 continue;
             var p = method.GetParameters();
             if (p.Length == 6 &&
