@@ -54,10 +54,7 @@ static class AnomalyScene
 
     public static void DebugLine(Vector3D a, Vector3D b, Color color)
     {
-        // SE-Vulkan lists DebugDrawLine3D as Pending; studio wireframe replay
-        // is a host gap. The game message proxy itself belongs to VRage.Render.
-        if (!AnomalyRenderer.AllowDx11Device)
-            return;
+        // VRage.Render's message proxy: DX11 and SE-Vulkan (DebugDrawLine3D replay) both draw it.
         MyRenderProxy.DebugDrawLine3D(a, b, color, color, false, false);
     }
 
