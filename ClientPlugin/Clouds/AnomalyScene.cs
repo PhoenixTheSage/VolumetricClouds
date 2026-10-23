@@ -21,9 +21,29 @@ static class AnomalyScene
         return new Vector3(ReadF("SunX"), ReadF("SunY"), ReadF("SunZ"));
     }
 
+    static PropertyInfo renderClock;
+    static int clockAssemblies = -1;
+
     public static double FrameSeconds()
     {
-        // Animation awaits Anomaly's neutral render clock on the guest route.
+        // Anomaly's RenderClock is the draw time on both hosts (DX11 MyCommon.FrameTime).
+        var assemblies = renderClock == null ? AppDomain.CurrentDomain.GetAssemblies() : null;
+        if (assemblies != null && assemblies.Length != clockAssemblies)
+        {
+            clockAssemblies = assemblies.Length;
+            foreach (var assembly in assemblies)
+            {
+                Type clock = null;
+                try { clock = assembly.GetType("ClientPlugin.Shaders.RenderClock", false); }
+                catch { }
+                renderClock = clock?.GetProperty("FrameSeconds", BindingFlags.Public | BindingFlags.Static);
+                if (renderClock != null)
+                    break;
+            }
+        }
+        if (renderClock != null)
+            return Convert.ToDouble(renderClock.GetValue(null));
+        // Older Anomaly: keep animation static on the guest route.
         if (!AnomalyRenderer.AllowDx11Device)
             return 0d;
         var type = Type.GetType("VRageRender.MyCommon, VRage.Render11");
