@@ -1,5 +1,11 @@
 # VolumetricClouds changelog
 
+## 1.2.2 — 2026-10-23
+
+- Prepare renderer uniforms through portable Anomaly callbacks and avoid DX11 frame-clock lookup on pending/Vulkan routes.
+- Resolve the six-argument studio wireframe proxy from VRage.Render; skip guest wireframes pending Vulkan DebugDrawLine3D replay.
+- Add bridge/route regressions and document deferred neutral-clock and debug-message capabilities.
+
 ## 1.2.1 — 2026-10-14
 
 - Register the cloud Status page independently of settings and pack startup; consolidate diagnostic controls there.

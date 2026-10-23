@@ -1,6 +1,8 @@
 using System;
 using System.Reflection;
+using ClientPlugin.Anomaly;
 using VRageMath;
+using VRageRender;
 
 namespace ClientPlugin.Clouds;
 
@@ -21,6 +23,9 @@ static class AnomalyScene
 
     public static double FrameSeconds()
     {
+        // Animation awaits Anomaly's neutral render clock on the guest route.
+        if (!AnomalyRenderer.AllowDx11Device)
+            return 0d;
         var type = Type.GetType("VRageRender.MyCommon, VRage.Render11");
         var frame = type?.GetProperty("FrameTime", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
         var seconds = frame?.GetType().GetProperty("Seconds")?.GetValue(frame);
@@ -29,9 +34,11 @@ static class AnomalyScene
 
     public static void DebugLine(Vector3D a, Vector3D b, Color color)
     {
-        var type = Type.GetType("VRageRender.MyRenderProxy, VRage.Render11");
-        var method = type?.GetMethod("DebugDrawLine3D", BindingFlags.Public | BindingFlags.Static);
-        method?.Invoke(null, new object[] { a, b, color, color, false });
+        // SE-Vulkan lists DebugDrawLine3D as Pending; studio wireframe replay
+        // is a host gap. The game message proxy itself belongs to VRage.Render.
+        if (!AnomalyRenderer.AllowDx11Device)
+            return;
+        MyRenderProxy.DebugDrawLine3D(a, b, color, color, false, false);
     }
 
     public static bool TryResolution(out int width, out int height)
