@@ -1,5 +1,10 @@
 # VolumetricClouds changelog
 
+## 1.2.3 — 2026-10-24
+
+- Use Anomaly RenderClock.FrameSeconds for wind, studio evolution and weather timing across renderers, retaining older-host fallback.
+- Draw studio placement wireframes through the VRage.Render proxy on Vulkan now that the renderer replays DebugDrawLine3D.
+
 ## 1.2.2 — 2026-10-23
 
 - Prepare renderer uniforms through portable Anomaly callbacks and avoid DX11 frame-clock lookup on pending/Vulkan routes.
