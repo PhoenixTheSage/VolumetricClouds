@@ -272,6 +272,14 @@ public static class CloudRenderer
         var config = Config.Current;
         AnomalyBridge.SetPassEnabled(false);
         SharedMediumAdapter.Publish(null, null);
+        // Disabled: neither studio nor world volumes can run, so skip the placement upload (about 0.14 ms a frame).
+        if (!config.Enabled)
+        {
+            lastPack = new CloudPackDiagnostics();
+            AnomalyBridge.SetStudioEnabled(false);
+            AnomalyBridge.SetStudioWorldEnabled(false);
+            return;
+        }
         var camera = AnomalyScene.Camera();
         var volumes = StudioPlacer.Upload(camera);
         var world = config.Enabled && StudioPlacer.HasWork && volumes != null && CloudTextures.EnsureNoise();
